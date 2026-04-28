@@ -40,6 +40,21 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
     raw_input = event.message_str.removeprefix("nai画图").strip()
     preset_names, other_params = plugin._parse_presets_from_params(raw_input)
 
+    # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
+    if not preset_names:
+        default_name = (plugin.config.defaults.default_preset or "").strip()
+        if default_name:
+            default_preset = await asyncio.to_thread(
+                plugin.preset_manager.get_preset, default_name
+            )
+            if default_preset is None:
+                logger.warning(
+                    f"[nai] defaults.default_preset 配置为 {default_name!r}，"
+                    f"但该预设不存在，已跳过"
+                )
+            else:
+                preset_names = [default_name]
+
     description = other_params.get("ds", "")
 
     reply_text = plugin._get_reply_text(event)

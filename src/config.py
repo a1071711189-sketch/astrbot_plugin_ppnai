@@ -137,18 +137,28 @@ class LLMConfig(BaseModel):
     default_prompt: Annotated[
         str,
         Field(
-            description="AI 自主画图时的默认正向提示词",
+            description="AI 自主画图时的默认正向提示词（兜底）",
             json_schema_extra={
                 "type": "text",
-                "hint": "AI 生成的提示词会与此默认提示词合并",
+                "hint": (
+                    "仅在 /nai画图、自动画图 中 AI 未输出任何正向提示词、且未使用预设时作为兜底使用；"
+                    "不会与 AI 输出合并。若想每次都自动追加品质 tag，建议使用『默认预设名称』。"
+                    "（与『默认值设置』中的『默认正向提示词』作用域不同，那个仅用于 /nai 命令）"
+                ),
             },
         ),
     ] = DEFAULT_PREPEND_PROMPT
     default_negative_prompt: Annotated[
         str,
         Field(
-            description="AI 自主画图时的默认反向提示词",
-            json_schema_extra={"type": "text"},
+            description="AI 自主画图时的默认反向提示词（兜底）",
+            json_schema_extra={
+                "type": "text",
+                "hint": (
+                    "仅在 /nai画图、自动画图 中 AI 未输出反向提示词、且未使用预设时作为兜底使用；"
+                    "不会与 AI 输出合并。"
+                ),
+            },
         ),
     ] = DEFAULT_NEGATIVE_PROMPT
     allow_i2i: Annotated[bool, Field(description="允许 AI 使用图生图功能")] = True
@@ -281,13 +291,29 @@ class DefaultsConfig(BaseModel):
         ),
         AfterValidator(make_item_exists_validator(AVAILABLE_MODELS)),
     ] = AVAILABLE_MODELS[-1]
+    default_preset: Annotated[
+        str,
+        Field(
+            description="默认预设名称",
+            json_schema_extra={
+                "hint": (
+                    "填写你已添加的预设标题（如：猫娘）。留空则不使用。"
+                    "/nai、/nai画图、/nai自动画图开 未指定 s1= 时自动应用此预设。"
+                    "若填入的预设不存在，将自动忽略并记录日志。"
+                ),
+            },
+        ),
+    ] = ""
     prompt: Annotated[
         str,
         Field(
             description="默认正向提示词",
             json_schema_extra={
                 "type": "text",
-                "hint": "使用 nai 命令时的默认正向提示词",
+                "hint": (
+                    "仅在 /nai 手动命令中、用户未输入任何正向提示词时作为兜底使用。"
+                    "（与『LLM 设置』中『AI 自主画图时的默认正向提示词』作用域不同）"
+                ),
             },
         ),
     ] = DEFAULT_PREPEND_PROMPT
@@ -295,7 +321,10 @@ class DefaultsConfig(BaseModel):
         str,
         Field(
             description="默认反向提示词",
-            json_schema_extra={"type": "text"},
+            json_schema_extra={
+                "type": "text",
+                "hint": "仅在 /nai 手动命令中、用户未输入任何反向提示词时作为兜底使用。",
+            },
         ),
     ] = DEFAULT_NEGATIVE_PROMPT
     size: Annotated[
