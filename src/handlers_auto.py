@@ -34,6 +34,21 @@ async def handle_auto_draw_on(plugin, event) -> AsyncIterator:
     raw_input = event.message_str.removeprefix("nai自动画图开").strip()
     preset_names, _ = plugin._parse_presets_from_params(raw_input)
 
+    # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
+    if not preset_names:
+        default_name = (plugin.config.defaults.default_preset or "").strip()
+        if default_name:
+            default_preset = await asyncio.to_thread(
+                plugin.preset_manager.get_preset, default_name
+            )
+            if default_preset is None:
+                logger.warning(
+                    f"[nai] defaults.default_preset 配置为 {default_name!r}，"
+                    f"但该预设不存在，已跳过"
+                )
+            else:
+                preset_names = [default_name]
+
     for preset_name in preset_names:
         preset = await asyncio.to_thread(plugin.preset_manager.get_preset, preset_name)
         if preset is None:
@@ -75,6 +90,22 @@ async def handle_auto_draw(plugin, event) -> AsyncIterator:
             return
 
         preset_names, _ = plugin._parse_presets_from_params(raw_input)
+
+        # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
+        if not preset_names:
+            default_name = (plugin.config.defaults.default_preset or "").strip()
+            if default_name:
+                default_preset = await asyncio.to_thread(
+                    plugin.preset_manager.get_preset, default_name
+                )
+                if default_preset is None:
+                    logger.warning(
+                        f"[nai] defaults.default_preset 配置为 {default_name!r}，"
+                        f"但该预设不存在，已跳过"
+                    )
+                else:
+                    preset_names = [default_name]
+
         if not preset_names:
             yield event.plain_result("请使用键值对格式设置预设，例如：\nnai自动画图\ns1=猫娘")
             return

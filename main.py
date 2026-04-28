@@ -830,7 +830,33 @@ class Plugin(Star):
             else:
                 # 强制键值对格式，不接受无等号的行
                 raise ValueError(f"参数格式错误：'{line}'，请使用键值对格式，例如：tag=xxx")
-        
+
+        # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
+        if not preset_numbers:
+            default_name = (self.config.defaults.default_preset or "").strip()
+            if default_name:
+                default_preset = await asyncio.to_thread(
+                    self.preset_manager.get_preset, default_name
+                )
+                if default_preset is None:
+                    logger.warning(
+                        f"[nai] defaults.default_preset 配置为 {default_name!r}，"
+                        f"但该预设不存在，已跳过"
+                    )
+                else:
+                    default_preset_params: list[tuple[str, str]] = []
+                    for pl in default_preset.content.split('\n'):
+                        pl = pl.strip()
+                        if not pl:
+                            continue
+                        if '=' in pl:
+                            pk, pv = pl.split('=', 1)
+                            default_preset_params.append((pk.strip(), pv.strip()))
+                        else:
+                            default_preset_params.append(('tag', pl))
+                    preset_numbers.append(1)
+                    preset_params_list.append(default_preset_params)
+
         # 按预设编号排序（1, 2, 3, ...）
         sorted_presets = sorted(zip(preset_numbers, preset_params_list), key=lambda x: x[0])
         
