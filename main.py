@@ -334,7 +334,8 @@ class STNaiGenerateImageTool(ConfigNeededTool):
     parameters: dict = Field(default_factory=dict)
 
     def __post_init__(self):
-        super().__post_init__()
+        if hasattr(super(), '__post_init__'):
+            super().__post_init__()
 
         # Limit concurrent image fetching across tool calls.
         # This is intentionally instance-level (tool object is registered once).
