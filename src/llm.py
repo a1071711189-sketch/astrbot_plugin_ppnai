@@ -46,6 +46,7 @@ class ConfigNeededTool(FunctionTool[AstrAgentContext]):
     config_init: Config | None = None
 
     def __post_init__(self):
+        super().__post_init__() 
         if not self.config_init:
             raise ValueError("config not provided")
         self.config = self.config_init
