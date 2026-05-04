@@ -51,6 +51,7 @@
 
 | 配置项 | 说明 | 必填 |
 | :--- | :--- | :--- |
+| `general.merge_draw_to_chat_record` | 是否将画图结果合并为聊天记录（关闭后直接发送图片）。 | ❌ 否 |
 | `request.tokens` | **授权 Token 列表**。请使用 NovelAI 官网获取的 `pst-` 开头的 Persistent API Token。支持多个 Token 轮询。 | ✅ 是 |
 | `request.opus_free_mode` | **Opus 免费模式**。开启后强制限制图片尺寸和步数，Opus 订阅账号不扣点数。 | ❌ 否 |
 | `llm.advanced_arg_generation_provider` | 用于将自然语言转换为绘图参数的 LLM 模型提供商。 | ❌ 否 |
@@ -84,7 +85,7 @@
 
 | 指令 | 示例/说明 |
 | :--- | :--- |
-| `nai` | 基础绘图。<br>`nai tag=1girl, white hair` |
+| `nai` | 基础绘图。<br>`nai tag=1girl, white hair`<br>批量生成：`nai tag=1girl n=3` |
 | `nai画图` | AI 辅助绘图。<br>`nai画图 画一个在海边玩耍的白发少女` |
 | `nai自动画图` | 查看当前自动画图状态或设置。<br>`nai自动画图 s1=预设名` |
 | `nai自动画图开` | 开启自动画图（消耗开启者额度）。<br>`nai自动画图开 s1=预设名` |
