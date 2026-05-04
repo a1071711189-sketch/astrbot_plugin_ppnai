@@ -320,14 +320,17 @@ async def _auto_draw_generate(
 
                 sender_id = event.get_sender_id()
                 sender_name = event.get_sender_name()
-                nodes = Nodes([
-                    Node(
-                        uin=sender_id,
-                        name=sender_name,
-                        content=[Image.fromBytes(image)],
-                    )
-                ])
-                await event.send(event.chain_result([nodes]))
+                if plugin.config.general.merge_draw_to_chat_record:
+                    nodes = Nodes([
+                        Node(
+                            uin=sender_id,
+                            name=sender_name,
+                            content=[Image.fromBytes(image)],
+                        )
+                    ])
+                    await event.send(event.chain_result([nodes]))
+                else:
+                    await event.send(event.chain_result([Image.fromBytes(image)]))
 
             except asyncio.CancelledError:
                 await plugin._queue.mark_wait_finished(

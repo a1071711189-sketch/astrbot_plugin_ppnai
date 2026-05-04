@@ -19,7 +19,7 @@ from astrbot.api import logger
 from astrbot.api import AstrBotConfig
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter as event_filter
 from astrbot.api.provider import LLMResponse
-from astrbot.api.message_components import Image, Reply
+from astrbot.api.message_components import Image, Node, Nodes, Reply
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.astr_agent_context import AstrAgentContext
@@ -444,10 +444,20 @@ class STNaiGenerateImageTool(ConfigNeededTool):
             )
 
         try:
-            await ctx.send_message(
-                event.unified_msg_origin,
-                MessageChain([Image.fromBytes(image)]),
-            )
+            if self.config.general.merge_draw_to_chat_record:
+                sender_id = event.get_sender_id()
+                sender_name = event.get_sender_name()
+                nodes = Nodes([
+                    Node(
+                        uin=sender_id,
+                        name=sender_name,
+                        content=[Image.fromBytes(image)],
+                    )
+                ])
+                chain = MessageChain([nodes])
+            else:
+                chain = MessageChain([Image.fromBytes(image)])
+            await ctx.send_message(event.unified_msg_origin, chain)
         except Exception as e:
             logger.exception("Send image failed")
             return (

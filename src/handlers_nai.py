@@ -173,16 +173,19 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
 
                 sender_id = event.get_sender_id()
                 sender_name = event.get_sender_name()
-                nodes = Nodes(
-                    [
-                        Node(
-                            uin=sender_id,
-                            name=sender_name,
-                            content=[Image.fromBytes(image)],
-                        )
-                    ]
-                )
-                yield event.chain_result([nodes])
+                if plugin.config.general.merge_draw_to_chat_record:
+                    nodes = Nodes(
+                        [
+                            Node(
+                                uin=sender_id,
+                                name=sender_name,
+                                content=[Image.fromBytes(image)],
+                            )
+                        ]
+                    )
+                    yield event.chain_result([nodes])
+                else:
+                    yield event.chain_result([Image.fromBytes(image)])
             except ReturnToLLMError as e:
                 yield event.plain_result(f"画图失败：{e}")
             except asyncio.CancelledError:
@@ -300,15 +303,18 @@ async def handle_cmd_nai(plugin, event, waiting_replies: list[str]) -> AsyncIter
 
                 sender_id = event.get_sender_id()
                 sender_name = event.get_sender_name()
-                nodes = Nodes([
-                    Node(
-                        uin=sender_id,
-                        name=sender_name,
-                        content=[Image.fromBytes(img)],
-                    )
-                    for img in images
-                ])
-                yield event.chain_result([nodes])
+                if plugin.config.general.merge_draw_to_chat_record:
+                    nodes = Nodes([
+                        Node(
+                            uin=sender_id,
+                            name=sender_name,
+                            content=[Image.fromBytes(img)],
+                        )
+                        for img in images
+                    ])
+                    yield event.chain_result([nodes])
+                else:
+                    yield event.chain_result([Image.fromBytes(img) for img in images])
             except GenerateError as e:
                 logger.error(f"Generation failed: {e}")
                 readable = format_readable_error(e)
