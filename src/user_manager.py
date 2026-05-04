@@ -158,6 +158,17 @@ class UserManager:
         user.quota -= 1
         self._save()
         return True
+
+    def consume_quota_n(self, user_id: str, amount: int) -> bool:
+        """按指定次数消耗额度，返回是否成功"""
+        if amount <= 0:
+            return True
+        user = self._get_user(user_id)
+        if user.quota < amount:
+            return False
+        user.quota -= amount
+        self._save()
+        return True
     
     def can_use(self, user_id: str) -> tuple[bool, str]:
         """
@@ -255,6 +266,9 @@ class UserManager:
 
     async def aadd_quota(self, user_id: str, amount: int) -> int:
         return await asyncio.to_thread(self.add_quota, user_id, amount)
+
+    async def aconsume_quota_n(self, user_id: str, amount: int) -> bool:
+        return await asyncio.to_thread(self.consume_quota_n, user_id, amount)
 
     async def areload(self) -> None:
         await asyncio.to_thread(self.reload)

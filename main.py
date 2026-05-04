@@ -771,7 +771,11 @@ class Plugin(Star):
         except Exception:
             return ""
 
-    async def _parse_args(self, event: AstrMessageEvent, is_whitelisted: bool = False) -> Req | None:
+    async def _parse_args(
+        self,
+        event: AstrMessageEvent,
+        is_whitelisted: bool = False,
+    ) -> tuple[Req, int] | None:
         """解析命令参数，支持多预设
         
         预设格式：s1=xxx, s2=xxx, ...
@@ -898,6 +902,15 @@ class Plugin(Star):
                     # 其他参数直接覆盖
                     merged[key] = value
         
+        # 解析批量数量（不参与绘图参数传递）
+        raw_count = merged.pop("n", "")
+        if raw_count:
+            if not raw_count.isdigit() or int(raw_count) < 1:
+                raise ValueError("参数 n 必须是大于等于 1 的整数")
+            batch_count = int(raw_count)
+        else:
+            batch_count = 1
+
         # 构建最终参数字符串
         final_params: list[str] = []
         
@@ -925,7 +938,8 @@ class Plugin(Star):
         
         final_raw = '\n'.join(final_params)
         
-        return await parse_req(final_raw, event.message_obj.message, self.config, is_whitelisted)
+        req = await parse_req(final_raw, event.message_obj.message, self.config, is_whitelisted)
+        return req, batch_count
 
     # ========== 签到命令 ==========
     

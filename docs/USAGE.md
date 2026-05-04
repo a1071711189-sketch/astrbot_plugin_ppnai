@@ -27,6 +27,16 @@ nai
 tag=1girl, coffee shop, smile
 ```
 
+#### 批量生成（扣除对应额度）
+
+```
+nai
+tag=1girl, coffee shop, smile
+n=3
+```
+
+> 未填写 `n` 时默认生成 1 张；若开启额度系统，会按 `n` 扣除次数。
+
 #### 使用预设
 
 ```

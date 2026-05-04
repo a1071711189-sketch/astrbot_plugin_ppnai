@@ -222,7 +222,7 @@ async def handle_cmd_nai(plugin, event, waiting_replies: list[str]) -> AsyncIter
     quota_enabled = plugin.config.quota.enable_quota
 
     try:
-        req = await plugin._parse_args(event, is_whitelisted)
+        parsed = await plugin._parse_args(event, is_whitelisted)
     except Exception as e:  # noqa: BLE001
         logger.debug("Failed to parse args", exc_info=e)
         yield event.plain_result(
@@ -230,7 +230,7 @@ async def handle_cmd_nai(plugin, event, waiting_replies: list[str]) -> AsyncIter
         )
         return
 
-    if req is None:
+    if parsed is None:
         help_msg = await plugin.generate_help(event.unified_msg_origin)
         if plugin.config.general.help_t2i:
             try:
@@ -246,14 +246,22 @@ async def handle_cmd_nai(plugin, event, waiting_replies: list[str]) -> AsyncIter
             yield event.plain_result(help_msg)
         return
 
+    req, batch_count = parsed
+
     if quota_enabled and not is_whitelisted:
         can_use, reason = plugin.user_manager.can_use(user_id)
         if not can_use:
             yield event.plain_result(reason)
             return
+        quota = plugin.user_manager.get_quota(user_id)
+        if quota < batch_count:
+            yield event.plain_result(
+                f"你的画图次数不足，当前剩余 {quota} 次，本次需要 {batch_count} 次"
+            )
+            return
 
     consume_quota = (
-        (lambda: plugin.user_manager.consume_quota(user_id))
+        (lambda: plugin.user_manager.consume_quota_n(user_id, batch_count))
         if quota_enabled and not is_whitelisted
         else None
     )
@@ -286,7 +294,9 @@ async def handle_cmd_nai(plugin, event, waiting_replies: list[str]) -> AsyncIter
                             client_getter=plugin.get_http_client,
                         )
 
-                    image = await plugin._run_with_retry(_do_generate)
+                    images: list[bytes] = []
+                    for _ in range(batch_count):
+                        images.append(await plugin._run_with_retry(_do_generate))
 
                 sender_id = event.get_sender_id()
                 sender_name = event.get_sender_name()
@@ -294,8 +304,9 @@ async def handle_cmd_nai(plugin, event, waiting_replies: list[str]) -> AsyncIter
                     Node(
                         uin=sender_id,
                         name=sender_name,
-                        content=[Image.fromBytes(image)],
+                        content=[Image.fromBytes(img)],
                     )
+                    for img in images
                 ])
                 yield event.chain_result([nodes])
             except GenerateError as e:
