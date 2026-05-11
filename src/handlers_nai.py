@@ -163,32 +163,32 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
 
             try:
                 async with acquire_generation_semaphore(plugin):
-                    req = await llm_generate_advanced_req(
-                        instructions=f"画一张图\n{full_description}",
-                        config=plugin.config,
-                        ctx=plugin.context,
-                        event=event,
-                        i2i_image=i2i_image,
-                        vibe_transfer_images=vibe_transfer_images,
-                        vision_images=vision_images,
-                        skip_default_prompts=bool(preset_contents),
-                    )
-
-                    if user_req is not None:
-                        apply_explicit_overrides(req, user_req, explicit_ids, wrappers)
-
-                    async def _do_generate():
-                        nonlocal token
-                        token = plugin._get_next_token()
-                        return await wrapped_generate(
-                            req,
-                            plugin.config,
-                            token=token,
-                            client_getter=plugin.get_http_client,
-                        )
-
                     images: list[bytes] = []
                     for _ in range(batch_count):
+                        req = await llm_generate_advanced_req(
+                            instructions=f"画一张图\n{full_description}",
+                            config=plugin.config,
+                            ctx=plugin.context,
+                            event=event,
+                            i2i_image=i2i_image,
+                            vibe_transfer_images=vibe_transfer_images,
+                            vision_images=vision_images,
+                            skip_default_prompts=bool(preset_contents),
+                        )
+
+                        if user_req is not None:
+                            apply_explicit_overrides(req, user_req, explicit_ids, wrappers)
+
+                        async def _do_generate():
+                            nonlocal token
+                            token = plugin._get_next_token()
+                            return await wrapped_generate(
+                                req,
+                                plugin.config,
+                                token=token,
+                                client_getter=plugin.get_http_client,
+                            )
+
                         images.append(await plugin._run_with_retry(_do_generate))
 
                 sender_id = event.get_sender_id()
