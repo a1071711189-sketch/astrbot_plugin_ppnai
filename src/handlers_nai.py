@@ -11,7 +11,11 @@ from .data_source import GenerateError, wrapped_generate
 from .llm import ReturnToLLMError, llm_generate_advanced_req
 from .llm_utils import format_readable_error
 from .params import _is_image_component, parse_req_with_remaining_images
-from .handlers_shared import apply_explicit_overrides, merge_nai_params
+from .handlers_shared import (
+    apply_explicit_overrides,
+    extract_batch_count,
+    merge_nai_params,
+)
 from .queue_flow import QueueRejected, acquire_generation_semaphore, reserve_queue
 
 
@@ -72,6 +76,12 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
             return
         preset_contents.append(preset.content)
 
+    try:
+        batch_count = extract_batch_count(preset_contents, raw_input)
+    except Exception as e:  # noqa: BLE001
+        yield event.plain_result(f"参数解析失败：{format_readable_error(e)}")
+        return
+
     merged_raw, wrappers, explicit_ids = merge_nai_params(preset_contents, raw_input)
     try:
         if merged_raw.strip():
@@ -124,8 +134,16 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
         f"[nai画图] presets={preset_names}, description={description[:50] if description else 'None'}"
     )
 
+    if quota_enabled and not is_whitelisted:
+        quota = plugin.user_manager.get_quota(user_id)
+        if quota < batch_count:
+            yield event.plain_result(
+                f"你的画图次数不足，当前剩余 {quota} 次，本次需要 {batch_count} 次"
+            )
+            return
+
     consume_quota = (
-        (lambda: plugin.user_manager.consume_quota(user_id))
+        (lambda: plugin.user_manager.consume_quota_n(user_id, batch_count))
         if quota_enabled and not is_whitelisted
         else None
     )
@@ -169,7 +187,9 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
                             client_getter=plugin.get_http_client,
                         )
 
-                    image = await plugin._run_with_retry(_do_generate)
+                    images: list[bytes] = []
+                    for _ in range(batch_count):
+                        images.append(await plugin._run_with_retry(_do_generate))
 
                 sender_id = event.get_sender_id()
                 sender_name = event.get_sender_name()
@@ -179,13 +199,14 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
                             Node(
                                 uin=sender_id,
                                 name=sender_name,
-                                content=[Image.fromBytes(image)],
+                                content=[Image.fromBytes(img)],
                             )
+                            for img in images
                         ]
                     )
                     yield event.chain_result([nodes])
                 else:
-                    yield event.chain_result([Image.fromBytes(image)])
+                    yield event.chain_result([Image.fromBytes(img) for img in images])
             except ReturnToLLMError as e:
                 yield event.plain_result(f"画图失败：{e}")
             except asyncio.CancelledError:

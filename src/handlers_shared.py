@@ -222,6 +222,25 @@ def merge_nai_params(
     return "\n".join(merged_lines), wrappers, explicit_ids
 
 
+def extract_batch_count(preset_contents: list[str], direct_text: str = "") -> int:
+    direct_pairs = _extract_direct_pairs(direct_text)
+    groups = _collect_param_groups(preset_contents, direct_pairs)
+    batch_count = 1
+
+    for params in groups:
+        for key, value in params:
+            if key != "n":
+                continue
+            raw_count = value.strip()
+            if not raw_count:
+                continue
+            if not raw_count.isdigit() or int(raw_count) < 1:
+                raise ValueError("参数 n 必须是大于等于 1 的整数")
+            batch_count = int(raw_count)
+
+    return batch_count
+
+
 def _apply_prompt_wrappers(base: str, prepend: str, append: str) -> str:
     s = base.strip()
     if prepend.strip():
