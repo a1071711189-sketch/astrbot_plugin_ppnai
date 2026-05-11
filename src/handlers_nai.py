@@ -43,6 +43,7 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
 
     raw_input = event.message_str.removeprefix("nai画图").strip()
     preset_names, other_params = plugin._parse_presets_from_params(raw_input)
+    cs_name = (other_params.get("cs") or "").strip()
 
     # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
     if not preset_names:
@@ -60,6 +61,14 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
                 preset_names = [default_name]
 
     description = other_params.get("ds", "")
+
+    cs_content = ""
+    if cs_name:
+        exists = await asyncio.to_thread(plugin.cs_store.exists, user_id, cs_name)
+        if not exists:
+            yield event.plain_result(f"角色保持 {cs_name} 不存在，请先使用 /cs 创建")
+            return
+        cs_content = await asyncio.to_thread(plugin.cs_store.read, user_id, cs_name)
 
     reply_text = plugin._get_reply_text(event)
     if reply_text:
@@ -174,6 +183,7 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
                             vibe_transfer_images=vibe_transfer_images,
                             vision_images=vision_images,
                             skip_default_prompts=bool(preset_contents),
+                            extra_system_prompt=cs_content,
                         )
 
                         if user_req is not None:

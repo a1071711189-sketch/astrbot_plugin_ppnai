@@ -36,7 +36,8 @@ async def handle_auto_draw_on(plugin, event) -> AsyncIterator:
         return
 
     raw_input = event.message_str.removeprefix("nai自动画图开").strip()
-    preset_names, _ = plugin._parse_presets_from_params(raw_input)
+    preset_names, other_params = plugin._parse_presets_from_params(raw_input)
+    cs_name = (other_params.get("cs") or "").strip()
 
     # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
     if not preset_names:
@@ -59,10 +60,17 @@ async def handle_auto_draw_on(plugin, event) -> AsyncIterator:
             yield event.plain_result(f"预设 {preset_name} 不存在，使用 nai预设列表 查看可用预设")
             return
 
+    if cs_name:
+        exists = await asyncio.to_thread(plugin.cs_store.exists, user_id, cs_name)
+        if not exists:
+            yield event.plain_result(f"角色保持 {cs_name} 不存在，请先使用 /cs 创建")
+            return
+
     plugin.auto_draw_info[umo] = {
         "enabled": True,
         "presets": preset_names,
         "opener_user_id": user_id,
+        "cs_name": cs_name,
     }
     if hasattr(plugin, "persist_auto_draw_info"):
         await plugin.persist_auto_draw_info()
@@ -93,7 +101,8 @@ async def handle_auto_draw(plugin, event) -> AsyncIterator:
             yield event.plain_result("你已被加入黑名单，无法开启自动画图")
             return
 
-        preset_names, _ = plugin._parse_presets_from_params(raw_input)
+        preset_names, other_params = plugin._parse_presets_from_params(raw_input)
+        cs_name = (other_params.get("cs") or "").strip()
 
         # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
         if not preset_names:
@@ -120,10 +129,17 @@ async def handle_auto_draw(plugin, event) -> AsyncIterator:
                 yield event.plain_result(f"预设 {preset_name} 不存在，使用 nai预设列表 查看可用预设")
                 return
 
+        if cs_name:
+            exists = await asyncio.to_thread(plugin.cs_store.exists, user_id, cs_name)
+            if not exists:
+                yield event.plain_result(f"角色保持 {cs_name} 不存在，请先使用 /cs 创建")
+                return
+
         plugin.auto_draw_info[umo] = {
             "enabled": True,
             "presets": preset_names,
             "opener_user_id": user_id,
+            "cs_name": cs_name,
         }
         if hasattr(plugin, "persist_auto_draw_info"):
             await plugin.persist_auto_draw_info()
@@ -145,6 +161,7 @@ async def handle_auto_draw(plugin, event) -> AsyncIterator:
         return
 
     presets = current.get("presets", [])
+    cs_name = current.get("cs_name", "")
     opener_id = current.get("opener_user_id", "")
     opener_quota = await asyncio.to_thread(plugin.user_manager.get_quota, opener_id)
     is_whitelisted = await asyncio.to_thread(plugin.user_manager.is_whitelisted, opener_id)
@@ -155,6 +172,8 @@ async def handle_auto_draw(plugin, event) -> AsyncIterator:
         status_parts.append(f"使用预设：{preset_str}")
     else:
         status_parts.append("未使用预设")
+    if cs_name:
+        status_parts.append(f"角色保持：{cs_name}")
     status_parts.append(f"开启者：{opener_id}")
     if is_whitelisted:
         status_parts.append("额度：无限（白名单）")
@@ -173,6 +192,7 @@ async def handle_llm_response_auto_draw(plugin, event, resp: LLMResponse):
 
     presets = auto_info.get("presets", [])
     opener_user_id = auto_info.get("opener_user_id", "")
+    cs_name = auto_info.get("cs_name", "")
 
     if not plugin.config.request.tokens:
         return
@@ -220,6 +240,7 @@ async def handle_llm_response_auto_draw(plugin, event, resp: LLMResponse):
         preset_contents,
         opener_user_id,
         is_whitelisted,
+        cs_name,
     )
     if hasattr(plugin, "_create_background_task"):
         plugin._create_background_task(coro, name="nai:auto_draw")
@@ -240,6 +261,7 @@ async def _auto_draw_generate(
     preset_contents: list[str],
     opener_user_id: str,
     is_whitelisted: bool,
+    cs_name: str,
 ):
     quota_enabled = plugin.config.quota.enable_quota
     umo = event.unified_msg_origin
@@ -312,6 +334,22 @@ async def _auto_draw_generate(
                     ]
                 vision_images = remaining_images
 
+                cs_content = ""
+                if cs_name:
+                    exists = await asyncio.to_thread(
+                        plugin.cs_store.exists, opener_user_id, cs_name
+                    )
+                    if not exists:
+                        await event.send(
+                            event.plain_result(
+                                f"🎨 自动画图失败：角色保持 {cs_name} 不存在"
+                            )
+                        )
+                        return
+                    cs_content = await asyncio.to_thread(
+                        plugin.cs_store.read, opener_user_id, cs_name
+                    )
+
                 full_parts = list(reversed(preset_contents)) + [ai_response_with_prefix]
                 full_instructions = "\n\n".join(full_parts)
 
@@ -329,6 +367,7 @@ async def _auto_draw_generate(
                             vibe_transfer_images=vibe_transfer_images,
                             vision_images=vision_images,
                             skip_default_prompts=bool(preset_contents),
+                            extra_system_prompt=cs_content,
                         )
 
                         if user_req is not None:
