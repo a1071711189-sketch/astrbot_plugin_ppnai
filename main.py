@@ -525,7 +525,7 @@ class Plugin(Star):
         self.user_manager = UserManager(data_dir)
         self.preset_manager = PresetManager(data_dir)
 
-        cs_dir = Path(__file__).parent / "cs"
+        cs_dir = data_dir / "cs"
         cssaying_path = Path(__file__).parent / "src" / "prompts" / "cssaying.txt"
         self.cs_store = CharacterKeepStore(cs_dir, cssaying_path)
 
