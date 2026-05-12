@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## v1.4.8
+## v1.5.0
 
 Enhancements:
 
