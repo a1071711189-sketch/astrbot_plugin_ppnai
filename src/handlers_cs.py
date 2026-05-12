@@ -66,6 +66,17 @@ async def handle_cs(plugin, event) -> AsyncIterator:
     if nn_prompt:
         content = nn_prompt
     else:
+        quota_enabled = plugin.config.quota.enable_quota
+        is_whitelisted = plugin.user_manager.is_whitelisted(user_id)
+        if quota_enabled and not is_whitelisted:
+            can_use, reason = plugin.user_manager.can_use(user_id)
+            if not can_use:
+                yield event.plain_result(reason)
+                return
+            if not plugin.user_manager.consume_quota_n(user_id, 1):
+                yield event.plain_result("你的画图次数已用完，请/nai签到获取额度")
+                return
+
         try:
             cssaying = await asyncio.to_thread(plugin.cs_store.load_cssaying)
         except Exception as e:  # noqa: BLE001

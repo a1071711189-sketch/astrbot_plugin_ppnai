@@ -267,7 +267,10 @@ async def _auto_draw_generate(
     umo = event.unified_msg_origin
 
     try:
-        batch_count = extract_batch_count(preset_contents)
+        batch_count = extract_batch_count(
+            preset_contents,
+            max_n=plugin.config.request.max_n,
+        )
     except Exception as e:  # noqa: BLE001
         await event.send(
             event.plain_result(f"🎨 自动画图失败：{format_readable_error(e)}")

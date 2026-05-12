@@ -222,7 +222,12 @@ def merge_nai_params(
     return "\n".join(merged_lines), wrappers, explicit_ids
 
 
-def extract_batch_count(preset_contents: list[str], direct_text: str = "") -> int:
+def extract_batch_count(
+    preset_contents: list[str],
+    direct_text: str = "",
+    *,
+    max_n: int = 0,
+) -> int:
     direct_pairs = _extract_direct_pairs(direct_text)
     groups = _collect_param_groups(preset_contents, direct_pairs)
     batch_count = 1
@@ -237,6 +242,9 @@ def extract_batch_count(preset_contents: list[str], direct_text: str = "") -> in
             if not raw_count.isdigit() or int(raw_count) < 1:
                 raise ValueError("参数 n 必须是大于等于 1 的整数")
             batch_count = int(raw_count)
+
+    if max_n > 0 and batch_count > max_n:
+        raise ValueError(f"参数 n 不能超过 {max_n}")
 
     return batch_count
 

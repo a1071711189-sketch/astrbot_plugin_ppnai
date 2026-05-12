@@ -86,7 +86,11 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
         preset_contents.append(preset.content)
 
     try:
-        batch_count = extract_batch_count(preset_contents, raw_input)
+        batch_count = extract_batch_count(
+            preset_contents,
+            raw_input,
+            max_n=plugin.config.request.max_n,
+        )
     except Exception as e:  # noqa: BLE001
         yield event.plain_result(f"参数解析失败：{format_readable_error(e)}")
         return

@@ -971,6 +971,10 @@ class Plugin(Star):
         else:
             batch_count = 1
 
+        max_n = int(getattr(self.config.request, "max_n", 0) or 0)
+        if max_n > 0 and batch_count > max_n:
+            raise ValueError(f"参数 n 不能超过 {max_n}")
+
         if cs_name:
             user_id = self._get_user_id(event)
             exists = await asyncio.to_thread(self.cs_store.exists, user_id, cs_name)
