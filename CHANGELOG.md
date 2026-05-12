@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## v1.4.9
+## v1.5.0
 
 Enhancements:
 
@@ -14,3 +14,4 @@ Enhancements:
 - 新增角色保持（cs）存档与引用，可用于 nai、nai画图、nai自动画图
 - 新增角色保持指令：cs dcs scs ccs，并支持参数 cs=名称
 - 新增n额度上限限制，csaa扣除额度
+- 修改了提示词以提高成功率
