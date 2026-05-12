@@ -94,4 +94,4 @@ According to the user's input, choose exactly one primary mode. If both appear m
 - Ensure all prompts are in **English**, formatted as half-width comma separated tags.
 - Output only a valid JSON object matching the schema; do not wrap in code fences or add any extra text.
 - Escape special characters as needed for valid JSON; use proper JSON types for booleans, numbers, and arrays.
-- Do not include fields outside the schema; for missing values, use empty strings or empty arrays as the schema dictates.
+- MANDATORY: All fields defined in the schema MUST be present in the output. If a value is missing, you MUST still include the key with an empty string ("") or empty array ([]) as per the schema. NEVER omit any keys.
