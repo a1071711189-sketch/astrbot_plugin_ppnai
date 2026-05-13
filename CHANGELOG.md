@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## v1.5.0
+## v1.5.1
 
 Enhancements:
 
@@ -15,3 +15,4 @@ Enhancements:
 - 新增角色保持指令：cs dcs scs ccs，并支持参数 cs=名称
 - 新增n额度上限限制，csaa扣除额度
 - 修改了提示词以提高成功率
+- 将s映射为s1，cs映射为cs1，并可使用多个cs组合

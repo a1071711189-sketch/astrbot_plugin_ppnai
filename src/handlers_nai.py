@@ -42,8 +42,7 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
             return
 
     raw_input = event.message_str.removeprefix("nai画图").strip()
-    preset_names, other_params = plugin._parse_presets_from_params(raw_input)
-    cs_name = (other_params.get("cs") or "").strip()
+    preset_names, other_params, cs_names = plugin._parse_presets_from_params(raw_input)
 
     # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
     if not preset_names:
@@ -62,13 +61,17 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
 
     description = other_params.get("ds", "")
 
-    cs_content = ""
-    if cs_name:
-        exists = await asyncio.to_thread(plugin.cs_store.exists, user_id, cs_name)
-        if not exists:
-            yield event.plain_result(f"角色保持 {cs_name} 不存在，请先使用 /cs 创建")
-            return
-        cs_content = await asyncio.to_thread(plugin.cs_store.read, user_id, cs_name)
+    cs_content_parts: list[str] = []
+    if cs_names:
+        for cs_name in cs_names:
+            exists = await asyncio.to_thread(plugin.cs_store.exists, user_id, cs_name)
+            if not exists:
+                yield event.plain_result(f"角色保持 {cs_name} 不存在，请先使用 /cs 创建")
+                return
+            cs_content_parts.append(
+                await asyncio.to_thread(plugin.cs_store.read, user_id, cs_name)
+            )
+    cs_content = "\n\n".join(cs_content_parts)
 
     reply_text = plugin._get_reply_text(event)
     if reply_text:

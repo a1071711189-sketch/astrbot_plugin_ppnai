@@ -17,6 +17,7 @@ class AutoDrawSession(BaseModel):
     enabled: bool = True
     presets: list[str] = Field(default_factory=list)
     opener_user_id: str = ""
+    cs_names: list[str] = Field(default_factory=list)
 
 
 class AutoDrawStore(BaseModel):
