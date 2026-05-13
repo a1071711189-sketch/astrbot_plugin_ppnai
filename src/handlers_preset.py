@@ -16,7 +16,6 @@ async def handle_preset_list(plugin, event) -> AsyncIterator:
         return
 
     result = "预设列表：\n" + "\n".join(f"• {title}" for title in presets)
-    result += "\n\n使用方式：\nnai\ns1=预设名"
     yield event.plain_result(result)
 
 
