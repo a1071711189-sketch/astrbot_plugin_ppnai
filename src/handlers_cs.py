@@ -43,7 +43,7 @@ async def handle_cs(plugin, event) -> AsyncIterator:
         if not names:
             yield event.plain_result("暂无角色保持记录，可使用 /cs 创建")
             return
-        result = "📝 角色保持列表：\n" + "\n".join(f"• {name}" for name in names) + "\n\n使用方式：\nnai\ncs=角色名"
+        result = "角色保持列表：\n" + "\n".join(f"• {name}" for name in names) + "\n\n" + "使用方式：\nnai\ncs=角色名"
         yield event.plain_result(result)
         return
 
