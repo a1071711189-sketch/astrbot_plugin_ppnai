@@ -737,7 +737,15 @@ class Plugin(Star):
     def _check_permission(self, event: AstrMessageEvent) -> bool:
         """检查是否是管理员"""
         # 这里简单判断，可以根据 AstrBot 的实际权限系统调整
-        return event.is_admin if hasattr(event, 'is_admin') else False
+        is_admin = getattr(event, "is_admin", None)
+        if callable(is_admin):
+            try:
+                return bool(is_admin())
+            except Exception:
+                return False
+        if isinstance(is_admin, bool):
+            return is_admin
+        return False
     
     def _get_next_token(self) -> str:
         """轮询获取下一个可用的 Token"""
