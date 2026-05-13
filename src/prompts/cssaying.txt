@@ -1,4 +1,4 @@
-请按照以下格式，将()和’‘内的内容根据用户提供的提示词进行补充，若无则留空：用户给了一个角色(角色名)，请根据用户给出的提示词或文章分析此角色(角色名)，并以NovelAI tag style的格式和英文的形式写出此角色的外貌，以下是此角色的外貌，可根据情景需要或用户提示词进行修改，用‘<\/tag>’包裹：
+Please complete the content within parentheses and single quotes according to the following format, leaving it blank if no prompts are provided: The user has given a character (character name). Please analyze this character (character name) based on the prompts or text provided by the user, and describe the character's appearance in NovelAI tag style format and English. The following is the character's appearance, which can be modified according to the context or user prompts. Enclose it in '</tag>':
 <tag>
-NovelAI tag style外貌提示词
+ NovelAI tag style appearance prompts
 </tag>
