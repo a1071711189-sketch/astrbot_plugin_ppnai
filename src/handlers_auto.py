@@ -2,16 +2,18 @@
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import Any
 
 from astrbot.api import logger
 from astrbot.api.message_components import Image, Node, Nodes
 from astrbot.api.provider import LLMResponse
 
 from .data_source import wrapped_generate
+from .image_io import resolve_image
 from .llm import llm_generate_advanced_req
 from .llm_utils import format_readable_error
+from .models import ReqAdditionCharacterKeep
 from .params import _is_image_component, parse_req_with_remaining_images
+from .image_params import iter_key_values, resolve_image_params
 from .handlers_shared import (
     apply_explicit_overrides,
     extract_batch_count,
@@ -27,16 +29,36 @@ async def handle_auto_draw_off(plugin, event) -> AsyncIterator:
     yield event.plain_result("❌ 自动画图已关闭")
 
 
-async def handle_auto_draw_on(plugin, event) -> AsyncIterator:
+def _strip_image_param_lines(raw_params: str) -> str:
+    blocked_keys = {
+        "i2i",
+        "vibe_transfer",
+        "character_keep",
+        "vibe_transfer_info_extract",
+        "vibe_transfer_ref_strength",
+        "character_keep_vibe",
+        "character_keep_strength",
+    }
+    kept_lines: list[str] = []
+    for raw_line in raw_params.splitlines():
+        line = raw_line.strip()
+        if not line or "=" not in line:
+            continue
+        key, _value = line.split("=", 1)
+        if key.strip() in blocked_keys:
+            continue
+        kept_lines.append(line)
+    return "\n".join(kept_lines)
+
+
+async def _enable_auto_draw(
+    plugin, event, raw_input: str, require_preset: bool
+) -> tuple[bool, str]:
     umo = event.unified_msg_origin
     user_id = plugin._get_user_id(event)
-
-    if await asyncio.to_thread(plugin.user_manager.is_blacklisted, user_id):
-        yield event.plain_result("你已被加入黑名单，无法开启自动画图")
-        return
-
-    raw_input = event.message_str.removeprefix("nai自动画图开").strip()
-    preset_names, other_params, cs_names = plugin._parse_presets_from_params(raw_input)
+    preset_names, _other_params, cs_names, image_params = (
+        plugin._parse_presets_from_params(raw_input)
+    )
 
     # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
     if not preset_names:
@@ -53,42 +75,80 @@ async def handle_auto_draw_on(plugin, event) -> AsyncIterator:
             else:
                 preset_names = [default_name]
 
+    if require_preset and not preset_names:
+        return False, "请使用键值对格式设置预设，例如：\nnai自动画图\ns1=猫娘"
+
+    preset_contents: list[str] = []
     for preset_name in preset_names:
         preset = await asyncio.to_thread(plugin.preset_manager.get_preset, preset_name)
         if preset is None:
-            yield event.plain_result(f"预设 {preset_name} 不存在，使用 nai预设列表 查看可用预设")
-            return
+            return False, f"预设 {preset_name} 不存在，使用 nai预设列表 查看可用预设"
+        preset_contents.append(preset.content)
 
     if cs_names:
         for cs_name in cs_names:
             exists = await asyncio.to_thread(plugin.cs_store.exists, user_id, cs_name)
             if not exists:
-                yield event.plain_result(f"角色保持 {cs_name} 不存在，请先使用 /cs 创建")
-                return
+                return False, f"角色保持 {cs_name} 不存在，请先使用 /cs 创建"
+
+    uploaded_images = [
+        x for x in event.message_obj.message if _is_image_component(x)
+    ]
+    try:
+        resolved_images = await resolve_image_params(
+            [*image_params, *iter_key_values(preset_contents)],
+            uploaded_images,
+        )
+    except Exception as e:  # noqa: BLE001
+        return False, f"图片参数解析失败：{format_readable_error(e)}"
+
+    vision_images = [
+        await resolve_image(img) if isinstance(img, Image) else img
+        for img in resolved_images.vision_images
+    ]
 
     plugin.auto_draw_info[umo] = {
         "enabled": True,
         "presets": preset_names,
         "opener_user_id": user_id,
         "cs_names": cs_names,
+        "i2i_image": resolved_images.i2i_image,
+        "vibe_transfer_images": resolved_images.vibe_transfer_images,
+        "character_keep_image": resolved_images.character_keep_image,
+        "vision_images": vision_images,
     }
     if hasattr(plugin, "persist_auto_draw_info"):
         await plugin.persist_auto_draw_info()
 
+    image_summary = resolved_images.summary()
+    extra = f"\n图片参数：{', '.join(image_summary)}" if image_summary else ""
     if preset_names:
         preset_str = ", ".join(f"#{name}" for name in preset_names)
-        yield event.plain_result(
+        return True, (
             f"✅ 自动画图已开启\n"
-            f"使用预设：{preset_str}\n"
+            f"使用预设：{preset_str}{extra}\n"
             f"主 AI 的回复将与预设内容结合后生成图片\n"
             f"⚠️ 后续触发的画图将消耗你的额度"
         )
-    else:
-        yield event.plain_result(
-            "✅ 自动画图已开启\n"
-            "主 AI 的回复将被自动分析生成图片\n"
-            "⚠️ 后续触发的画图将消耗你的额度"
-        )
+    return True, (
+        f"✅ 自动画图已开启{extra}\n"
+        f"主 AI 的回复将被自动分析生成图片\n"
+        f"⚠️ 后续触发的画图将消耗你的额度"
+    )
+
+
+async def handle_auto_draw_on(plugin, event) -> AsyncIterator:
+    user_id = plugin._get_user_id(event)
+
+    if await asyncio.to_thread(plugin.user_manager.is_blacklisted, user_id):
+        yield event.plain_result("你已被加入黑名单，无法开启自动画图")
+        return
+
+    raw_input = event.message_str.removeprefix("nai自动画图开").strip()
+    _ok, message = await _enable_auto_draw(
+        plugin, event, raw_input, require_preset=False
+    )
+    yield event.plain_result(message)
 
 
 async def handle_auto_draw(plugin, event) -> AsyncIterator:
@@ -101,55 +161,10 @@ async def handle_auto_draw(plugin, event) -> AsyncIterator:
             yield event.plain_result("你已被加入黑名单，无法开启自动画图")
             return
 
-        preset_names, other_params, cs_names = plugin._parse_presets_from_params(raw_input)
-
-        # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
-        if not preset_names:
-            default_name = (plugin.config.defaults.default_preset or "").strip()
-            if default_name:
-                default_preset = await asyncio.to_thread(
-                    plugin.preset_manager.get_preset, default_name
-                )
-                if default_preset is None:
-                    logger.warning(
-                        f"[nai] defaults.default_preset 配置为 {default_name!r}，"
-                        f"但该预设不存在，已跳过"
-                    )
-                else:
-                    preset_names = [default_name]
-
-        if not preset_names:
-            yield event.plain_result("请使用键值对格式设置预设，例如：\nnai自动画图\ns1=猫娘")
-            return
-
-        for preset_name in preset_names:
-            preset = await asyncio.to_thread(plugin.preset_manager.get_preset, preset_name)
-            if preset is None:
-                yield event.plain_result(f"预设 {preset_name} 不存在，使用 nai预设列表 查看可用预设")
-                return
-
-        if cs_names:
-            for cs_name in cs_names:
-                exists = await asyncio.to_thread(plugin.cs_store.exists, user_id, cs_name)
-                if not exists:
-                    yield event.plain_result(f"角色保持 {cs_name} 不存在，请先使用 /cs 创建")
-                    return
-
-        plugin.auto_draw_info[umo] = {
-            "enabled": True,
-            "presets": preset_names,
-            "opener_user_id": user_id,
-            "cs_names": cs_names,
-        }
-        if hasattr(plugin, "persist_auto_draw_info"):
-            await plugin.persist_auto_draw_info()
-
-        preset_str = ", ".join(f"#{name}" for name in preset_names)
-        yield event.plain_result(
-            f"✅ 自动画图已开启\n"
-            f"使用预设：{preset_str}\n"
-            f"⚠️ 后续触发的画图将消耗你的额度"
+        _ok, message = await _enable_auto_draw(
+            plugin, event, raw_input, require_preset=True
         )
+        yield event.plain_result(message)
         return
 
     current = plugin.auto_draw_info.get(umo)
@@ -178,6 +193,16 @@ async def handle_auto_draw(plugin, event) -> AsyncIterator:
         status_parts.append("未使用预设")
     if cs_names:
         status_parts.append(f"角色保持：{', '.join(cs_names)}")
+    image_parts: list[str] = []
+    if current.get("i2i_image"):
+        image_parts.append("图生图")
+    vibe_count = len(current.get("vibe_transfer_images") or [])
+    if vibe_count:
+        image_parts.append(f"氛围转移×{vibe_count}")
+    if current.get("character_keep_image"):
+        image_parts.append("角色保持图片")
+    if image_parts:
+        status_parts.append(f"图片参数：{', '.join(image_parts)}")
     status_parts.append(f"开启者：{opener_id}")
     if is_whitelisted:
         status_parts.append("额度：无限（白名单）")
@@ -249,6 +274,7 @@ async def handle_llm_response_auto_draw(plugin, event, resp: LLMResponse):
         opener_user_id,
         is_whitelisted,
         cs_names,
+        auto_info,
     )
     if hasattr(plugin, "_create_background_task"):
         plugin._create_background_task(coro, name="nai:auto_draw")
@@ -270,6 +296,7 @@ async def _auto_draw_generate(
     opener_user_id: str,
     is_whitelisted: bool,
     cs_names: list[str],
+    auto_info: dict,
 ):
     quota_enabled = plugin.config.quota.enable_quota
     umo = event.unified_msg_origin
@@ -320,30 +347,21 @@ async def _auto_draw_generate(
             try:
                 ai_response_with_prefix = f"参考：{ai_response}"
                 merged_raw, wrappers, explicit_ids = merge_nai_params(preset_contents)
-                if merged_raw.strip():
-                    user_req, remaining_images = await parse_req_with_remaining_images(
-                        merged_raw,
-                        event.message_obj.message,
+                filtered_raw = _strip_image_param_lines(merged_raw)
+                if filtered_raw.strip():
+                    user_req, _remaining_images = await parse_req_with_remaining_images(
+                        filtered_raw,
+                        [],
                         plugin.config,
                         is_whitelisted=is_whitelisted,
                     )
                 else:
                     user_req = None
-                    remaining_images = [
-                        x for x in event.message_obj.message if _is_image_component(x)
-                    ]
 
-                i2i_image = (
-                    user_req.addition.image_to_image_base64
-                    if user_req and user_req.addition
-                    else None
-                )
-                vibe_transfer_images = None
-                if user_req and user_req.addition and user_req.addition.vibe_transfer_list:
-                    vibe_transfer_images = [
-                        x.base64 for x in user_req.addition.vibe_transfer_list if x.base64
-                    ]
-                vision_images = remaining_images
+                i2i_image = auto_info.get("i2i_image")
+                vibe_transfer_images = auto_info.get("vibe_transfer_images")
+                character_keep_image = auto_info.get("character_keep_image")
+                vision_images = auto_info.get("vision_images")
 
                 cs_content_parts: list[str] = []
                 if cs_names:
@@ -384,6 +402,13 @@ async def _auto_draw_generate(
                             skip_default_prompts=bool(preset_contents),
                             extra_system_prompt=cs_content,
                         )
+
+                        if character_keep_image and req.addition is not None:
+                            req.addition.character_keep = ReqAdditionCharacterKeep(
+                                base64=character_keep_image,
+                                keep_vibe=plugin.config.defaults.character_keep_vibe,
+                                strength=plugin.config.defaults.character_keep_strength,
+                            )
 
                         if user_req is not None:
                             apply_explicit_overrides(req, user_req, explicit_ids, wrappers)

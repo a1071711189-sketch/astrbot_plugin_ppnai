@@ -42,7 +42,9 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
             return
 
     raw_input = event.message_str.removeprefix("nai画图").strip()
-    preset_names, other_params, cs_names = plugin._parse_presets_from_params(raw_input)
+    preset_names, other_params, cs_names, _image_params = (
+        plugin._parse_presets_from_params(raw_input)
+    )
 
     # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
     if not preset_names:

@@ -1182,6 +1182,7 @@ class Plugin(Star):
         
         presets: list[tuple[int, str]] = []  # (编号, 预设名)
         cs_entries: dict[int, str] = {}
+        image_params: list[tuple[str, str]] = []
         other_params: dict[str, str] = {}
         
         for line in raw_params.split('\n'):
@@ -1215,13 +1216,25 @@ class Plugin(Star):
                     if existing and existing != value:
                         raise ValueError(f"cs{cs_num} 重复且不一致")
                     cs_entries[cs_num] = value
+                elif key in {
+                    "i2i",
+                    "图生图",
+                    "vibe_transfer",
+                    "v_t",
+                    "氛围转移",
+                    "character_keep",
+                    "c_k",
+                    "ck",
+                    "角色保持",
+                }:
+                    image_params.append((key, value))
                 else:
                     other_params[key] = value
         
         # 按编号排序
         presets.sort(key=lambda x: x[0])
         cs_names = [name for _, name in sorted(cs_entries.items(), key=lambda x: x[0])]
-        return [name for _, name in presets], other_params, cs_names
+        return [name for _, name in presets], other_params, cs_names, image_params
     
     @event_filter.command("nai画图")
     async def cmd_nai_draw(self, event: AstrMessageEvent):

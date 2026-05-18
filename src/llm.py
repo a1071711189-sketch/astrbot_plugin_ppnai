@@ -61,6 +61,7 @@ async def llm_generate_prepare_req(
     config: Config,
     i2i_image: str | None = None,
     vibe_transfer_images: list[str] | None = None,
+    character_keep_image: str | None = None,
     skip_default_prompts: bool = False,
 ) -> Req:
     """
@@ -133,6 +134,13 @@ async def llm_generate_prepare_req(
                     if vt_args.reference_strength is not None:
                         vt[i]["ref_strength"] = vt_args.reference_strength
 
+        if character_keep_image:
+            data_addition["character_keep"] = {
+                "base64": character_keep_image,
+                "keep_vibe": config.defaults.character_keep_vibe,
+                "strength": config.defaults.character_keep_strength,
+            }
+
         if args.multi_role_list:
             data_addition["multi_role_list"] = [
                 ReqAdditionMultiRole.model_validate(x) for x in args.multi_role_list
@@ -163,6 +171,7 @@ async def llm_generate_image(
     event: AstrMessageEvent,
     i2i_image: str | None = None,
     vibe_transfer_images: list[str] | None = None,
+    character_keep_image: str | None = None,
     vision_images: list[Any] | None = None,
     skip_default_prompts: bool = False,
     extra_system_prompt: str | None = None,
@@ -178,6 +187,7 @@ async def llm_generate_image(
         event: 消息事件
         i2i_image: 图生图的图片
         vibe_transfer_images: 氛围转移的图片列表
+        character_keep_image: 角色保持参考图片
         skip_default_prompts: 是否跳过默认前置/后置提示词（使用预设时为 True）
         token: 使用的 Token
     """
@@ -188,6 +198,7 @@ async def llm_generate_image(
         event=event,
         i2i_image=i2i_image,
         vibe_transfer_images=vibe_transfer_images,
+        character_keep_image=character_keep_image,
         vision_images=vision_images,
         skip_default_prompts=skip_default_prompts,
         extra_system_prompt=extra_system_prompt,
@@ -209,6 +220,7 @@ async def llm_generate_advanced_req(
     event: AstrMessageEvent,
     i2i_image: str | None = None,
     vibe_transfer_images: list[str] | None = None,
+    character_keep_image: str | None = None,
     vision_images: list[Any] | None = None,
     skip_default_prompts: bool = False,
     extra_system_prompt: str | None = None,
@@ -327,6 +339,7 @@ async def llm_generate_advanced_req(
                 config,
                 i2i_image,
                 vibe_transfer_images,
+                character_keep_image,
                 skip_default_prompts=skip_default_prompts,
             )
         except ReturnToLLMError as e:
