@@ -8,15 +8,38 @@ from astrbot.api import logger
 from astrbot.api.message_components import Image, Node, Nodes
 
 from .data_source import GenerateError, wrapped_generate
+from .image_params import iter_key_values, resolve_image_params
 from .llm import ReturnToLLMError, llm_generate_advanced_req
 from .llm_utils import format_readable_error
-from .params import _is_image_component, parse_req_with_remaining_images
+from .params import parse_req
 from .handlers_shared import (
     apply_explicit_overrides,
     extract_batch_count,
     merge_nai_params,
 )
 from .queue_flow import QueueRejected, acquire_generation_semaphore, reserve_queue
+
+
+def _strip_image_param_lines(raw_params: str) -> str:
+    blocked_keys = {
+        "i2i",
+        "vibe_transfer",
+        "character_keep",
+        "vibe_transfer_info_extract",
+        "vibe_transfer_ref_strength",
+        "character_keep_vibe",
+        "character_keep_strength",
+    }
+    kept_lines: list[str] = []
+    for raw_line in raw_params.splitlines():
+        line = raw_line.strip()
+        if not line or "=" not in line:
+            continue
+        key, _value = line.split("=", 1)
+        if key.strip() in blocked_keys:
+            continue
+        kept_lines.append(line)
+    return "\n".join(kept_lines)
 
 
 async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIterator:
@@ -42,7 +65,7 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
             return
 
     raw_input = event.message_str.removeprefix("nai画图").strip()
-    preset_names, other_params, cs_names, _image_params = (
+    preset_names, other_params, cs_names, image_params = (
         plugin._parse_presets_from_params(raw_input)
     )
 
@@ -90,6 +113,16 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
             return
         preset_contents.append(preset.content)
 
+    uploaded_images = [x for x in event.message_obj.message if isinstance(x, Image)]
+    try:
+        resolved_images = await resolve_image_params(
+            [*image_params, *iter_key_values(preset_contents)],
+            uploaded_images,
+        )
+    except Exception as e:  # noqa: BLE001
+        yield event.plain_result(f"图片参数解析失败：{format_readable_error(e)}")
+        return
+
     try:
         batch_count = extract_batch_count(
             preset_contents,
@@ -101,32 +134,25 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
         return
 
     merged_raw, wrappers, explicit_ids = merge_nai_params(preset_contents, raw_input)
+    filtered_raw = _strip_image_param_lines(merged_raw)
     try:
-        if merged_raw.strip():
-            user_req, remaining_images = await parse_req_with_remaining_images(
-                merged_raw,
-                event.message_obj.message,
+        if filtered_raw.strip():
+            user_req = await parse_req(
+                filtered_raw,
+                [],
                 plugin.config,
                 is_whitelisted=is_whitelisted,
             )
         else:
             user_req = None
-            remaining_images = [
-                x for x in event.message_obj.message if _is_image_component(x)
-            ]
     except Exception as e:  # noqa: BLE001
-        yield event.plain_result(f"参数/图片解析失败：{format_readable_error(e)}")
+        yield event.plain_result(f"参数解析失败：{format_readable_error(e)}")
         return
 
-    i2i_image = (
-        user_req.addition.image_to_image_base64 if user_req and user_req.addition else None
-    )
-    vibe_transfer_images = None
-    if user_req and user_req.addition and user_req.addition.vibe_transfer_list:
-        vibe_transfer_images = [
-            x.base64 for x in user_req.addition.vibe_transfer_list if x.base64
-        ]
-    vision_images = remaining_images
+    i2i_image = resolved_images.i2i_image
+    vibe_transfer_images = resolved_images.vibe_transfer_images
+    character_keep_image = resolved_images.character_keep_image
+    vision_images = resolved_images.vision_images
 
     if (
         not preset_contents
@@ -134,6 +160,7 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
         and not vision_images
         and not i2i_image
         and not vibe_transfer_images
+        and not character_keep_image
     ):
         yield event.plain_result(
             "请输入画图描述，格式：\n"
@@ -190,6 +217,7 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
                             event=event,
                             i2i_image=i2i_image,
                             vibe_transfer_images=vibe_transfer_images,
+                            character_keep_image=character_keep_image,
                             vision_images=vision_images,
                             skip_default_prompts=bool(preset_contents),
                             extra_system_prompt=cs_content,
