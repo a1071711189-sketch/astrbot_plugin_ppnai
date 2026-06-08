@@ -8,7 +8,7 @@ from importlib import import_module
 from importlib import util as importlib_util
 from io import BytesIO
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from cookit.pyd import model_with_model_config
 from pydantic import BaseModel, ConfigDict, Field
@@ -376,8 +376,8 @@ class STNaiGenerateImageTool(ConfigNeededTool):
         " Use when user wants you to draw an image."
     )
     parameters: dict = Field(default_factory=dict)
-    _artist_state_store: SessionStateStore | None = None
-    _artist_presets: list = Field(default_factory=list)
+    _artist_state_store: Any = None
+    _artist_presets: Any = None
 
     def __post_init__(self):
         super().__post_init__()
