@@ -223,6 +223,8 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
                             extra_system_prompt=cs_content,
                         )
 
+                        plugin._apply_artist_preset(req, event)
+
                         if user_req is not None:
                             apply_explicit_overrides(req, user_req, explicit_ids, wrappers)
 
@@ -237,6 +239,8 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
                             )
 
                         images.append(await plugin._run_with_retry(_do_generate))
+
+                images = await plugin._strip_images(images)
 
                 sender_id = event.get_sender_id()
                 sender_name = event.get_sender_name()
@@ -319,6 +323,8 @@ async def handle_cmd_nai(plugin, event, waiting_replies: list[str]) -> AsyncIter
 
     req, batch_count = parsed
 
+    plugin._apply_artist_preset(req, event)
+
     if quota_enabled and not is_whitelisted:
         can_use, reason = plugin.user_manager.can_use(user_id)
         if not can_use:
@@ -368,6 +374,8 @@ async def handle_cmd_nai(plugin, event, waiting_replies: list[str]) -> AsyncIter
                     images: list[bytes] = []
                     for _ in range(batch_count):
                         images.append(await plugin._run_with_retry(_do_generate))
+
+                images = await plugin._strip_images(images)
 
                 sender_id = event.get_sender_id()
                 sender_name = event.get_sender_name()

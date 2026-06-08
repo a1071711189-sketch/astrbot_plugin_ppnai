@@ -403,6 +403,8 @@ async def _auto_draw_generate(
                             extra_system_prompt=cs_content,
                         )
 
+                        plugin._apply_artist_preset(req, event)
+
                         if character_keep_image and req.addition is not None:
                             req.addition.character_keep = ReqAdditionCharacterKeep(
                                 base64=character_keep_image,
@@ -424,6 +426,8 @@ async def _auto_draw_generate(
                             )
 
                         images.append(await plugin._run_with_retry(_do_generate))
+
+                images = await plugin._strip_images(images)
 
                 sender_id = event.get_sender_id()
                 sender_name = event.get_sender_name()

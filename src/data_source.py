@@ -38,11 +38,14 @@ def create_client_from_config(config: "Config", token: str = ""):
         "Origin": "https://novelai.net",
         "Referer": "https://novelai.net",
     }
-    
-    # 注意：Bearer Token 建议按“每次请求”附带，避免共享 Client 时混用。
+
+    proxy = (config.request.proxy or "").strip() or None
+
+    # 注意：Bearer Token 建议按"每次请求"附带，避免共享 Client 时混用。
     return AsyncClient(
         base_url=config.request.base_url,
         headers=headers,
+        proxy=proxy,
         timeout=Timeout(
             config.request.connect_timeout, read=config.request.read_timeout
         ),

@@ -4,7 +4,8 @@
     "type": "object",
     "default": {
       "help_t2i": true,
-      "merge_draw_to_chat_record": true
+      "merge_draw_to_chat_record": true,
+      "strip_metadata": true
     },
     "description": "通用设置",
     "items": {
@@ -19,6 +20,13 @@
         "description": "将画图结果合并为聊天记录",
         "hint": "关闭后将直接发送图片，不合并存在被举报风险，请自行评估",
         "title": "Merge Draw To Chat Record",
+        "type": "bool"
+      },
+      "strip_metadata": {
+        "default": true,
+        "description": "发送前抹除图片 Metadata",
+        "hint": "开启后会在发送图片前去除 EXIF 等元数据，保护隐私。关闭后保留原始图片数据。",
+        "title": "Strip Metadata",
         "type": "bool"
       }
     }
@@ -36,7 +44,8 @@
       "max_n": 4,
       "retry_times": 0,
       "retry_wait": 1.0,
-      "opus_free_mode": false
+      "opus_free_mode": false,
+      "proxy": ""
     },
     "description": "请求设置",
     "items": {
@@ -123,6 +132,13 @@
         "hint": "开启后强制使用符合 Opus 免费生成条件的参数：分辨率 ≤1024x1024、步数 ≤28。适用于 Opus 订阅用户，可无限免费生成",
         "title": "Opus Free Mode",
         "type": "bool"
+      },
+      "proxy": {
+        "default": "",
+        "description": "代理地址",
+        "hint": "HTTP/SOCKS5 代理地址，用于连接 NovelAI API。格式如 http://127.0.0.1:7890。留空则不使用代理。",
+        "title": "Proxy",
+        "type": "string"
       }
     }
   },
@@ -506,6 +522,53 @@
         "minimum": 0.0,
         "title": "Character Keep Strength",
         "type": "float"
+      }
+    }
+  },
+  "artist_presets": {
+    "title": "ArtistPresetConfig",
+    "type": "object",
+    "default": {
+      "presets": []
+    },
+    "description": "画师预设",
+    "items": {
+      "presets": {
+        "default": [],
+        "description": "画师预设列表",
+        "hint": "通过命令切换的全局画师预设，可配置多个风格的画师串",
+        "title": "Presets",
+        "type": "list",
+        "items": {
+          "name": {
+            "default": "",
+            "description": "预设名称",
+            "hint": "用于在列表中展示的风格名称",
+            "title": "Name",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "description": "风格说明",
+            "hint": "简短描述该预设的画风特点",
+            "title": "Description",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "description": "画师 Prompt",
+            "hint": "画师提示词，如 artist:xxx，支持权重语法",
+            "title": "Prompt",
+            "type": "text"
+          },
+          "negative_prompt": {
+            "default": "",
+            "description": "附加负面提示词",
+            "hint": "选中该预设时追加到负面提示词中的内容",
+            "title": "Negative Prompt",
+            "type": "text"
+          }
+        }
       }
     }
   }

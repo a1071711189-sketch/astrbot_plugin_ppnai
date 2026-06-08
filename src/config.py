@@ -14,6 +14,43 @@ from .models import (
 )
 from .params import USER_DEFINABLE_FIELDS, delete_unused_related_fields_validator
 
+
+class ArtistPresetItem(BaseModel):
+    name: Annotated[
+        str,
+        Field(
+            description="预设名称",
+            json_schema_extra={"hint": "用于在列表中展示的风格名称"},
+        ),
+    ] = ""
+    description: Annotated[
+        str,
+        Field(
+            description="风格说明",
+            json_schema_extra={"hint": "简短描述该预设的画风特点"},
+        ),
+    ] = ""
+    prompt: Annotated[
+        str,
+        Field(
+            description="画师 Prompt",
+            json_schema_extra={
+                "type": "text",
+                "hint": "画师提示词，如 artist:xxx，支持权重语法",
+            },
+        ),
+    ] = ""
+    negative_prompt: Annotated[
+        str,
+        Field(
+            description="附加负面提示词",
+            json_schema_extra={
+                "type": "text",
+                "hint": "选中该预设时追加到负面提示词中的内容",
+            },
+        ),
+    ] = ""
+
 DEFAULT_PREPEND_PROMPT = "best quality, very aesthetic, absurdres"
 DEFAULT_NEGATIVE_PROMPT = (
     "blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality"
@@ -40,6 +77,15 @@ class GeneralConfig(BaseModel):
             description="将画图结果合并为聊天记录",
             json_schema_extra={
                 "hint": "关闭后将直接发送图片，不合并存在被举报风险，请自行评估",
+            },
+        ),
+    ] = True
+    strip_metadata: Annotated[
+        bool,
+        Field(
+            description="发送前抹除图片 Metadata",
+            json_schema_extra={
+                "hint": "开启后会在发送图片前去除 EXIF 等元数据，保护隐私。关闭后保留原始图片数据。",
             },
         ),
     ] = True
@@ -144,6 +190,15 @@ class RequestConfig(BaseModel):
             },
         ),
     ] = False
+    proxy: Annotated[
+        str,
+        Field(
+            description="代理地址",
+            json_schema_extra={
+                "hint": "HTTP/SOCKS5 代理地址，用于连接 NovelAI API。格式如 http://127.0.0.1:7890。留空则不使用代理。",
+            },
+        ),
+    ] = ""
 
 
 class LLMConfig(BaseModel):
@@ -450,6 +505,18 @@ class DefaultsConfig(BaseModel):
         ),
     ] = 0.5
 
+class ArtistPresetConfig(BaseModel):
+    presets: Annotated[
+        list[ArtistPresetItem],
+        Field(
+            description="画师预设列表",
+            json_schema_extra={
+                "hint": "通过命令切换的全局画师预设，可配置多个风格的画师串",
+            },
+        ),
+    ] = Field(default_factory=list)
+
+
 class Config(BaseModel):
     general: Annotated[
         GeneralConfig,
@@ -471,11 +538,14 @@ class Config(BaseModel):
         QuotaConfig,
         Field(description="额度设置"),
     ] = QuotaConfig()
-
     defaults: Annotated[
         DefaultsConfig,
         Field(description="默认值设置"),
     ] = DefaultsConfig()
+    artist_presets: Annotated[
+        ArtistPresetConfig,
+        Field(description="画师预设"),
+    ] = ArtistPresetConfig()
 
 
 if __name__ == "__main__":

@@ -79,7 +79,16 @@ from .src.llm_utils import format_readable_error
 from .src.models import Req
 from .src.character_keep_store import CharacterKeepStore, extract_nai_tag
 from .src.params import parse_req
-from .src.image_io import resolve_image
+from .src.artist_preset import (
+    SessionContext,
+    SessionRuntimeState,
+    SessionStateStore,
+    inject_artist_negative,
+    inject_artist_prompt,
+    parse_artist_presets,
+    resolve_artist_preset,
+)
+from .src.image_io import resolve_image, astrip_image_metadata
 from .src.user_manager import UserManager
 from .src.preset_manager import PresetManager
 from .src.queue_manager import get_shared_queue
@@ -367,6 +376,8 @@ class STNaiGenerateImageTool(ConfigNeededTool):
         " Use when user wants you to draw an image."
     )
     parameters: dict = Field(default_factory=dict)
+    _artist_state_store: SessionStateStore | None = None
+    _artist_presets: list = Field(default_factory=list)
 
     def __post_init__(self):
         super().__post_init__()
@@ -457,18 +468,37 @@ class STNaiGenerateImageTool(ConfigNeededTool):
         vision_images = [img for idx, img in enumerate(images) if idx not in used_indices]
 
         try:
-            # 在指令前添加"画一张图"
             instructions_with_prefix = f"画一张图\n\n{args.instructions}"
-            image = await llm_generate_image(
-                instructions_with_prefix,
-                self.config,
-                ctx,
-                event,
-                i2i_image,
-                vibe_transfer_images,
+            req = await llm_generate_advanced_req(
+                instructions=instructions_with_prefix,
+                config=self.config,
+                ctx=ctx,
+                event=event,
+                i2i_image=i2i_image,
+                vibe_transfer_images=vibe_transfer_images,
                 vision_images=vision_images,
+            )
+
+            if self._artist_state_store is not None and self._artist_presets is not None:
+                session = SessionContext.from_event(event)
+                state = self._artist_state_store.get(session)
+                selected = resolve_artist_preset(self._artist_presets, state)
+                if selected:
+                    if selected.prompt:
+                        req.tag = inject_artist_prompt(req.tag, selected.prompt)
+                    if selected.negative_prompt:
+                        req.negative = inject_artist_negative(
+                            req.negative, selected.negative_prompt
+                        )
+
+            image = await wrapped_generate(
+                req,
+                self.config,
                 client_getter=self.client_getter,
             )
+
+            if self.config.general.strip_metadata:
+                image = await astrip_image_metadata(image)
         except ReturnToLLMError as e:
             logger.debug(f"{e}")
             return f"{e}"
@@ -530,6 +560,11 @@ class Plugin(Star):
         self.cs_store = CharacterKeepStore(cs_dir, cssaying_path)
 
         self._auto_draw_store = AutoDrawStoreManager(data_dir)
+
+        self._artist_state_store = SessionStateStore()
+        self._artist_presets = parse_artist_presets(
+            self.config.artist_presets.presets
+        )
         
         # 自动画图状态（按会话存储）
         # key: unified_msg_origin
@@ -552,6 +587,8 @@ class Plugin(Star):
             STNaiGenerateImageTool(
                 config_init=self.config,
                 client_getter_init=self.get_http_client,
+                _artist_state_store=self._artist_state_store,
+                _artist_presets=self._artist_presets,
             )
         )
 
@@ -827,6 +864,29 @@ class Plugin(Star):
             return ""
         except Exception:
             return ""
+
+    def _get_artist_injection(self, event: AstrMessageEvent) -> tuple[str, str]:
+        """获取当前会话选中画师预设的 prompt 和 negative_prompt。"""
+        session = SessionContext.from_event(event)
+        state = self._artist_state_store.get(session)
+        selected = resolve_artist_preset(self._artist_presets, state)
+        if selected:
+            return selected.prompt, selected.negative_prompt
+        return "", ""
+
+    def _apply_artist_preset(self, req, event: AstrMessageEvent) -> None:
+        """将会话级画师预设注入到请求参数中。"""
+        artist_prompt, artist_negative = self._get_artist_injection(event)
+        if artist_prompt:
+            req.tag = inject_artist_prompt(req.tag, artist_prompt)
+        if artist_negative:
+            req.negative = inject_artist_negative(req.negative, artist_negative)
+
+    async def _strip_images(self, images: list[bytes]) -> list[bytes]:
+        """根据配置开关，对图片列表批量抹除 metadata。"""
+        if not self.config.general.strip_metadata:
+            return images
+        return await asyncio.gather(*[astrip_image_metadata(img) for img in images])
 
     async def _parse_args(
         self,
@@ -1164,6 +1224,43 @@ class Plugin(Star):
         """修改角色保持外貌提示词"""
         async for result in handle_ccs(self, event):
             yield result
+
+    # ========== 画师预设命令 ==========
+
+    @event_filter.command("nai画师")
+    async def cmd_artist_preset(self, event: AstrMessageEvent):
+        """画师预设：列出或切换画师风格"""
+        argument = event.message_str.removeprefix("nai画师").strip()
+        session = SessionContext.from_event(event)
+        state = self._artist_state_store.get(session)
+
+        if not self._artist_presets:
+            yield event.plain_result("当前没有配置画师预设，请管理员在配置中添加。")
+            return
+
+        if argument:
+            if not argument.isdigit():
+                yield event.plain_result("请填写数字编号，例如：nai画师 2")
+                return
+            index = int(argument)
+            if not 1 <= index <= len(self._artist_presets):
+                yield event.plain_result(
+                    f"编号超出范围，当前共有 {len(self._artist_presets)} 个预设。"
+                )
+                return
+            state.selected_artist_index = index
+            yield event.plain_result(
+                f"已切换到画师预设 #{index}：{self._artist_presets[index - 1].name}"
+            )
+            return
+
+        current_index = state.selected_artist_index or 1
+        lines = [f"当前画师预设：#{current_index}"]
+        for i, preset in enumerate(self._artist_presets, start=1):
+            marker = "->" if i == current_index else "  "
+            desc_part = f" - {preset.description}" if preset.description else ""
+            lines.append(f"{marker} {i}. {preset.name}{desc_part}")
+        yield event.plain_result("\n".join(lines))
 
     # ========== nai画图命令（直接调用插件AI） ==========
     

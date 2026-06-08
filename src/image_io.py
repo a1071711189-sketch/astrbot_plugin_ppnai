@@ -128,3 +128,21 @@ async def resolve_image_as_jpeg(image: Image) -> str:
         f"[nai] 角色保持: 接收到图片, 原始MIME={original_mime}, 原始大小={len(b64)} chars"
     )
     return await aconvert_to_jpeg_for_character_keep(original_data_uri)
+
+
+def strip_image_metadata(image_bytes: bytes) -> bytes:
+    """去除图片 EXIF/metadata，重新编码为纯净 PNG 返回。
+
+    CPU-heavy, must be called via asyncio.to_thread.
+    """
+    pil_image = PILImage.open(io.BytesIO(image_bytes))
+    clean = PILImage.new(pil_image.mode, pil_image.size)
+    clean.putdata(list(pil_image.getdata()))
+    buf = io.BytesIO()
+    clean.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+async def astrip_image_metadata(image_bytes: bytes) -> bytes:
+    """Async wrapper for strip_image_metadata."""
+    return await asyncio.to_thread(strip_image_metadata, image_bytes)
