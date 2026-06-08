@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## v1.6.0
+
+Breaking Changes & New Features:
+- 新增画师预设系统：配置 `artist_presets` 模板列表，通过 `/nai art` 命令切换画师风格，prompt/negative 自动注入所有生图路径
+- 新增代理地址配置：`request.proxy` 支持 HTTP/SOCKS5 代理连接 NovelAI API
+- 新增发送失败提示：图片生成成功但发送失败时，随机抽取三条俏皮文案提醒用户
+- LLM 工具重写：`nai_generate_image` 改用 `@filter.llm_tool` 装饰器注册，参数简化为 `request: str`，与参考插件一致
+- 全平台发图兼容：移除 QQ 专属 `Nodes`/`Node` 合并转发，统一使用直接图片发送，适配 Discord 等平台
+- 强制抹除 Metadata：发送前始终转 JPEG 清除 prompt 等元数据，不再提供关闭开关
+- 参数格式兼容：所有参数同时支持 `key=value` 和 `key value` 两种写法
+- 自然语言输入：`nai画图` 及预设支持裸文本描述，无需 `ds=` 前缀
+- `/nai` 命令容错：非参数裸文本自动识别为 tag，`/nai art` 不再触发 `/nai` 参数解析报错
+- 等待文案更新：生成中提示改为三条爱丽数码风格文案随机
+
+Internal:
+- 代码精简：删除旧 `STNaiGenerateImageTool` dataclass 工具类 (~120行)，改用装饰器模式
+- 修复 `parse_req` 末行无分隔符报错
+- 修复部分重复调用和导入冗余
+- 适配 Discord 平台发图
+
 ## v1.5.7
 
 Enhancements:
