@@ -672,7 +672,37 @@ class Plugin(Star):
         import re
         preset_pattern = re.compile(r'^s(\d+)$')
         cs_pattern = re.compile(r'^cs(\d+)$')
-        
+
+        # 所有 parse_req 能识别的参数键（含别名）
+        _NAI_PARAM_KEYS = {
+            "tag", "negative", "ne", "reverse", "反向提示词", "正向提示词",
+            "prepend_tag", "a_tag", "前置正向", "前置正向提示词",
+            "append_tag", "b_tag", "后置正向", "后置正向提示词",
+            "prepend_negative", "a_ne", "前置负面", "前置负面提示词",
+            "append_negative", "b_ne", "后置负面", "后置负面提示词",
+            "artist", "画师", "画师串",
+            "model", "模型",
+            "size", "画面尺寸",
+            "seed", "种子",
+            "steps", "采样步数",
+            "scale", "提示词引导值",
+            "cfg", "缩放引导值",
+            "sampler", "采样器",
+            "noise_schedule", "n_s", "噪声调度",
+            "other", "高级配置",
+            "i2i", "图生图",
+            "i2i_force", "i_f", "重绘力度",
+            "i2i_cl", "图片处理",
+            "vibe_transfer", "v_t", "氛围转移",
+            "vibe_transfer_info_extract", "v_t_i_e", "氛围转移信息提取度",
+            "vibe_transfer_ref_strength", "v_t_r_s", "氛围转移参考强度",
+            "role", "角色", "多角色",
+            "character_keep", "c_k", "ck", "角色保持",
+            "character_keep_vibe", "c_k_v", "角色保持氛围",
+            "character_keep_strength", "c_k_s", "角色保持强度",
+            "ds", "n",
+        }
+
         for line in lines:
             line = line.strip()
             if not line:
@@ -680,12 +710,24 @@ class Plugin(Star):
 
             if '=' in line:
                 key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip()
             elif ' ' in line:
                 key, value = line.split(' ', 1)
+                key = key.strip()
+                value = value.strip()
+                if (
+                    key not in _NAI_PARAM_KEYS
+                    and key != "s"
+                    and key != "cs"
+                    and not preset_pattern.match(key)
+                    and not cs_pattern.match(key)
+                ):
+                    direct_params.append(('tag', line))
+                    continue
             else:
-                raise ValueError(f"参数格式错误：'{line}'，请使用如 tag=xxx 或 tag xxx 的格式")
-            key = key.strip()
-            value = value.strip()
+                direct_params.append(('tag', line))
+                continue
 
             if key == "cs":
                 cs_num = 1
