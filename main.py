@@ -2,17 +2,12 @@ import asyncio
 import os
 import sys
 import types
-import uuid
 from asyncio import Semaphore
 from importlib import import_module
 from importlib import util as importlib_util
 from io import BytesIO
 from pathlib import Path
-from typing import Annotated, Any
 
-from cookit.pyd import model_with_model_config
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.dataclasses import dataclass
 from typing_extensions import override
 
 from astrbot.api import logger
@@ -21,9 +16,6 @@ from astrbot.api.event import AstrMessageEvent, MessageChain, filter as event_fi
 from astrbot.api.provider import LLMResponse
 from astrbot.api.message_components import Image, Reply
 from astrbot.api.star import Context, Star, StarTools
-from astrbot.core.agent.run_context import ContextWrapper
-from astrbot.core.astr_agent_context import AstrAgentContext
-from astrbot.core.agent.tool import ToolExecResult
 
 
 def _load_src_module(module_basename: str):
@@ -70,8 +62,8 @@ def _load_src_module(module_basename: str):
 from .src.config import Config
 from .src.data_source import GenerateError, create_client_from_config, wrapped_generate
 from .src.llm import (
-    ConfigNeededTool,
     ReturnToLLMError,
+    llm_generate_advanced_req,
 )
 from .src.llm_utils import format_readable_error
 from .src.models import Req
@@ -305,129 +297,11 @@ def _cleanup_legacy_help_cache() -> int:
         return 0
 
 
-def _unwrap_tool_context(context: ContextWrapper[AstrAgentContext]) -> tuple[Context, AstrMessageEvent]:
-    ctx = context.context.context
-    event = context.context.event
-    return ctx, event
-
 WAITING_REPLIES = [
     "了解了解～把你的想象交给我吧，我会把它变成现实的！",
     "嘿嘿～这个委托听起来很有趣！数据加载中……生成启动！",
     "指令确认！爱丽数码绘画模式全开，马上为你调配最棒的色彩！",
 ]
-
-
-@model_with_model_config(ConfigDict(extra="forbid"))
-class NaiGenerateImageArgs(BaseModel):
-    request: Annotated[
-        str,
-        Field(
-            description=(
-                "The prompt tags for image generation."
-                " Use Danbooru/NovelAI tag format, comma-separated, in English."
-                " Include quality tags like 'masterpiece, best quality'."
-                " Write detailed tags for best results."
-            )
-        ),
-    ]
-    negative: Annotated[
-        str,
-        Field(
-            description=(
-                "Optional. Negative prompt tags for what NOT to include in the image."
-            )
-        ),
-    ] = ""
-
-
-@dataclass
-class NaiGenerateImageTool(ConfigNeededTool):
-    name: str = "nai_generate_image"
-    description: str = (
-        "Generate an anime-style illustration using NovelAI and send it to the user."
-        " Call this whenever the user wants to draw, create, or generate an image/picture/illustration."
-        " You can also call this proactively when you think an image would enhance your response."
-    )
-    parameters: dict = Field(default_factory=dict)
-    _artist_state_store: Any = None
-    _artist_presets: Any = None
-
-    def __post_init__(self):
-        super().__post_init__()
-        self._image_fetch_sem = Semaphore(4)
-        self.parameters = NaiGenerateImageArgs.model_json_schema()
-
-    async def call(
-        self,
-        context: ContextWrapper[AstrAgentContext],
-        **kwargs,
-    ) -> ToolExecResult:
-        try:
-            args = NaiGenerateImageArgs.model_validate(kwargs)
-        except Exception as e:
-            tip = "Invalid arguments for nai_generate_image"
-            logger.debug(tip, exc_info=e)
-            return format_readable_error(e)
-
-        ctx, event = _unwrap_tool_context(context)
-
-        from .src.models import Req
-        from .src.params import complete_defaults, post_check_limits
-
-        try:
-            data: dict[str, Any] = {
-                "tag": args.request.strip(),
-            }
-            if args.negative.strip():
-                data["negative"] = args.negative.strip()
-
-            config = self.config
-            complete_defaults(data, config)
-            req = Req.model_validate(data)
-            post_check_limits(req, config, is_whitelisted=True)
-
-            if self._artist_state_store is not None and self._artist_presets is not None:
-                session = SessionContext.from_event(event)
-                state = self._artist_state_store.get(session)
-                selected = resolve_artist_preset(self._artist_presets, state)
-                if selected:
-                    if selected.prompt:
-                        req.tag = inject_artist_prompt(req.tag, selected.prompt)
-                    if selected.negative_prompt:
-                        req.negative = inject_artist_negative(
-                            req.negative, selected.negative_prompt
-                        )
-
-            image = await wrapped_generate(
-                req,
-                config,
-                client_getter=self.client_getter,
-            )
-
-            image = await astrip_image_metadata(image)
-        except ReturnToLLMError as e:
-            logger.debug(f"{e}")
-            return f"{e}"
-        except Exception as e:
-            logger.exception("Internal error during image generation")
-            return (
-                f"Internal error during image generation: \n{format_readable_error(e)}"
-            )
-
-        try:
-            chain = MessageChain([Image.fromBytes(image)])
-            await ctx.send_message(event.unified_msg_origin, chain)
-        except Exception as e:
-            logger.exception("Send image failed")
-            import random as _random
-            from .src.handlers_shared import SEND_FAILURE_REPLIES as _sfr
-            return (
-                f"Image was generated successfully but failed to send due to network issue."
-                f" Inform the user:\n{_random.choice(_sfr)}"
-                f"\n\n(Technical detail: {format_readable_error(e)})"
-            )
-
-        return "Image successfully sent"
 
 
 class Plugin(Star):
@@ -478,15 +352,6 @@ class Plugin(Star):
         
         # 画图队列（进程内共享，避免多实例导致并发翻倍）
         self._queue = get_shared_queue()
-
-        self.context.add_llm_tools(
-            NaiGenerateImageTool(
-                config_init=self.config,
-                client_getter_init=self.get_http_client,
-                _artist_state_store=self._artist_state_store,
-                _artist_presets=self._artist_presets,
-            )
-        )
 
     @override
     async def initialize(self):
@@ -1119,6 +984,67 @@ class Plugin(Star):
         """修改角色保持外貌提示词"""
         async for result in handle_ccs(self, event):
             yield result
+
+    # ========== LLM 工具 ==========
+
+    @event_filter.llm_tool(name="nai_generate_image")
+    async def nai_generate_image_tool(self, event: AstrMessageEvent, request: str) -> str:
+        """根据用户描述生成一张 NovelAI 图片并直接发送到当前会话。
+
+        Args:
+            request(string): 用户想绘制的画面描述，可以是中文自然语言或英文标签。
+        """
+        user_id = self._get_user_id(event)
+        if self.user_manager.is_blacklisted(user_id):
+            return "用户已被加入黑名单，无法使用画图功能"
+
+        is_whitelisted = self.user_manager.is_whitelisted(user_id)
+        quota_enabled = self.config.quota.enable_quota
+        if quota_enabled and not is_whitelisted:
+            can_use, reason = self.user_manager.can_use(user_id)
+            if not can_use:
+                return reason
+
+        try:
+            req = await llm_generate_advanced_req(
+                instructions=f"画一张图\n{request.strip()}",
+                config=self.config,
+                ctx=self.context,
+                event=event,
+            )
+        except ReturnToLLMError as e:
+            return f"图片生成失败：{e}"
+        except Exception as e:
+            logger.exception("LLM tool: advanced req generation failed")
+            return f"图片生成失败：{format_readable_error(e)}"
+
+        self._apply_artist_preset(req, event)
+
+        if quota_enabled and not is_whitelisted:
+            quota = self.user_manager.get_quota(user_id)
+            if quota < 1:
+                return "你的画图次数已用完，请/nai签到获取额度"
+            self.user_manager.consume_quota_n(user_id, 1)
+
+        token = self._get_next_token()
+        try:
+            image = await wrapped_generate(req, self.config, token=token, client_getter=self.get_http_client)
+        except Exception as e:
+            logger.exception("LLM tool: image generation failed")
+            return f"图片生成失败：{format_readable_error(e)}"
+
+        image = await astrip_image_metadata(image)
+
+        try:
+            chain = MessageChain([Image.fromBytes(image)])
+            await self.context.send_message(event.unified_msg_origin, chain)
+        except Exception:
+            logger.exception("LLM tool: send image failed")
+            import random as _r
+            from .src.handlers_shared import SEND_FAILURE_REPLIES as _sfr
+            return _r.choice(_sfr)
+
+        return "图片已发送。"
 
     # ========== 画师预设命令 ==========
 
