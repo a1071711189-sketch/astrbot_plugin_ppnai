@@ -12,7 +12,7 @@ from typing_extensions import override
 
 from astrbot.api import logger
 from astrbot.api import AstrBotConfig
-from astrbot.api.event import AstrMessageEvent, MessageChain, filter as event_filter
+from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.provider import LLMResponse
 from astrbot.api.message_components import Image, Reply
 from astrbot.api.star import Context, Star, StarTools
@@ -308,7 +308,7 @@ class Plugin(Star):
     """使用指令 nai 查看详细帮助"""
 
     def __init__(self, context: Context, config: AstrBotConfig):
-        super().__init__(context)
+        super().__init__(context, config)
         self.config = Config.model_validate(config)
 
         # Per-plugin HTTP client (avoid module-level global state).
@@ -859,19 +859,19 @@ class Plugin(Star):
 
     # ========== 签到命令 ==========
     
-    @event_filter.command("nai签到")
+    @filter.command("nai签到")
     async def cmd_checkin(self, event: AstrMessageEvent):
         """每日签到获取画图额度"""
         async for result in handle_checkin(self, event):
             yield result
     
-    @event_filter.command("nai队列")
+    @filter.command("nai队列")
     async def cmd_queue_status(self, event: AstrMessageEvent):
         """查询当前队列状态"""
         async for result in handle_queue_status(self, event):
             yield result
     
-    @event_filter.command("查询额度")
+    @filter.command("查询额度")
     async def cmd_query_quota(self, event: AstrMessageEvent):
         """查询自己的画图额度"""
         async for result in handle_query_quota(self, event):
@@ -879,55 +879,55 @@ class Plugin(Star):
 
     # ========== 管理员命令 ==========
     
-    @event_filter.command("nai黑名单添加")
+    @filter.command("nai黑名单添加")
     async def cmd_add_blacklist(self, event: AstrMessageEvent):
         """将用户添加到黑名单（管理员）"""
         async for result in handle_add_blacklist(self, event):
             yield result
     
-    @event_filter.command("nai黑名单移除")
+    @filter.command("nai黑名单移除")
     async def cmd_remove_blacklist(self, event: AstrMessageEvent):
         """将用户从黑名单移除（管理员）"""
         async for result in handle_remove_blacklist(self, event):
             yield result
     
-    @event_filter.command("nai黑名单列表")
+    @filter.command("nai黑名单列表")
     async def cmd_list_blacklist(self, event: AstrMessageEvent):
         """查看黑名单列表（管理员）"""
         async for result in handle_list_blacklist(self, event):
             yield result
     
-    @event_filter.command("nai白名单添加")
+    @filter.command("nai白名单添加")
     async def cmd_add_whitelist(self, event: AstrMessageEvent):
         """将用户添加到白名单（管理员）"""
         async for result in handle_add_whitelist(self, event):
             yield result
     
-    @event_filter.command("nai白名单移除")
+    @filter.command("nai白名单移除")
     async def cmd_remove_whitelist(self, event: AstrMessageEvent):
         """将用户从白名单移除（管理员）"""
         async for result in handle_remove_whitelist(self, event):
             yield result
     
-    @event_filter.command("nai白名单列表")
+    @filter.command("nai白名单列表")
     async def cmd_list_whitelist(self, event: AstrMessageEvent):
         """查看白名单列表（管理员）"""
         async for result in handle_list_whitelist(self, event):
             yield result
     
-    @event_filter.command("nai查询用户")
+    @filter.command("nai查询用户")
     async def cmd_admin_query_user(self, event: AstrMessageEvent):
         """查询用户额度（管理员）"""
         async for result in handle_admin_query_user(self, event):
             yield result
     
-    @event_filter.command("nai设置额度")
+    @filter.command("nai设置额度")
     async def cmd_set_quota(self, event: AstrMessageEvent):
         """设置用户额度（管理员）"""
         async for result in handle_set_quota(self, event):
             yield result
     
-    @event_filter.command("nai增加额度")
+    @filter.command("nai增加额度")
     async def cmd_add_quota(self, event: AstrMessageEvent):
         """增加用户额度（管理员）"""
         async for result in handle_add_quota(self, event):
@@ -935,25 +935,25 @@ class Plugin(Star):
 
     # ========== 预设命令 ==========
     
-    @event_filter.command("nai预设列表")
+    @filter.command("nai预设列表")
     async def cmd_preset_list(self, event: AstrMessageEvent):
         """查看预设列表"""
         async for result in handle_preset_list(self, event):
             yield result
     
-    @event_filter.command("nai预设查看")
+    @filter.command("nai预设查看")
     async def cmd_preset_view(self, event: AstrMessageEvent):
         """查看预设详细内容"""
         async for result in handle_preset_view(self, event):
             yield result
     
-    @event_filter.command("nai预设添加")
+    @filter.command("nai预设添加")
     async def cmd_preset_add(self, event: AstrMessageEvent):
         """添加预设（管理员）"""
         async for result in handle_preset_add(self, event):
             yield result
     
-    @event_filter.command("nai预设删除")
+    @filter.command("nai预设删除")
     async def cmd_preset_delete(self, event: AstrMessageEvent):
         """删除预设（管理员）"""
         async for result in handle_preset_delete(self, event):
@@ -961,25 +961,25 @@ class Plugin(Star):
 
     # ========== 角色保持命令 ==========
 
-    @event_filter.command("cs")
+    @filter.command("cs")
     async def cmd_cs(self, event: AstrMessageEvent):
         """角色保持：创建/列表"""
         async for result in handle_cs(self, event):
             yield result
 
-    @event_filter.command("dcs")
+    @filter.command("dcs")
     async def cmd_dcs(self, event: AstrMessageEvent):
         """角色保持删除"""
         async for result in handle_dcs(self, event):
             yield result
 
-    @event_filter.command("scs")
+    @filter.command("scs")
     async def cmd_scs(self, event: AstrMessageEvent):
         """查询角色保持外貌提示词"""
         async for result in handle_scs(self, event):
             yield result
 
-    @event_filter.command("ccs")
+    @filter.command("ccs")
     async def cmd_ccs(self, event: AstrMessageEvent):
         """修改角色保持外貌提示词"""
         async for result in handle_ccs(self, event):
@@ -987,7 +987,7 @@ class Plugin(Star):
 
     # ========== LLM 工具 ==========
 
-    @event_filter.llm_tool(name="nai_generate_image")
+    @filter.llm_tool(name="nai_generate_image")
     async def nai_generate_image_tool(self, event: AstrMessageEvent, request: str) -> str:
         """根据用户描述生成一张 NovelAI 图片并直接发送到当前会话。
 
@@ -1048,7 +1048,7 @@ class Plugin(Star):
 
     # ========== 画师预设命令 ==========
 
-    @event_filter.command("nai art")
+    @filter.command("nai art")
     async def cmd_artist_preset(self, event: AstrMessageEvent):
         """画师预设：列出或切换画师风格"""
         argument = event.message_str.removeprefix("nai art").strip()
@@ -1164,7 +1164,7 @@ class Plugin(Star):
         cs_names = [name for _, name in sorted(cs_entries.items(), key=lambda x: x[0])]
         return [name for _, name in presets], other_params, cs_names, image_params
     
-    @event_filter.command("nai画图")
+    @filter.command("nai画图")
     async def cmd_nai_draw(self, event: AstrMessageEvent):
         """使用插件 AI 直接画图"""
         async for result in handle_nai_draw(self, event, WAITING_REPLIES):
@@ -1172,13 +1172,13 @@ class Plugin(Star):
 
     # ========== 自动画图命令 ==========
     
-    @event_filter.command("nai自动画图关")
+    @filter.command("nai自动画图关")
     async def cmd_auto_draw_off(self, event: AstrMessageEvent):
         """关闭自动画图"""
         async for result in handle_auto_draw_off(self, event):
             yield result
     
-    @event_filter.command("nai自动画图开")
+    @filter.command("nai自动画图开")
     async def cmd_auto_draw_on(self, event: AstrMessageEvent):
         """开启自动画图
         
@@ -1190,7 +1190,7 @@ class Plugin(Star):
         async for result in handle_auto_draw_on(self, event):
             yield result
     
-    @event_filter.command("nai自动画图")
+    @filter.command("nai自动画图")
     async def cmd_auto_draw(self, event: AstrMessageEvent):
         """查看或设置自动画图状态
         
@@ -1207,15 +1207,19 @@ class Plugin(Star):
 
     # ========== 画图命令 ==========
 
-    @event_filter.command(COMMAND)
+    @filter.command(COMMAND)
     async def cmd_nai(self, event: AstrMessageEvent):
         """泡泡画图"""
+        raw = event.message_str.removeprefix(COMMAND).strip()
+        first_word = raw.split()[0] if raw else ""
+        if first_word in {"art"}:
+            return
         async for result in handle_cmd_nai(self, event, WAITING_REPLIES):
             yield result
 
     # ========== 自动画图钩子 ==========
     
-    @event_filter.on_llm_response(priority=50)
+    @filter.on_llm_response(priority=50)
     async def on_llm_response_auto_draw(self, event: AstrMessageEvent, resp: LLMResponse):
         """监听主 AI 回复，自动生成图片"""
         await handle_llm_response_auto_draw(self, event, resp)
