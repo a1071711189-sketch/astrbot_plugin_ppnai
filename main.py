@@ -72,8 +72,6 @@ from .src.data_source import GenerateError, create_client_from_config, wrapped_g
 from .src.llm import (
     ConfigNeededTool,
     ReturnToLLMError,
-    llm_generate_advanced_req,
-    llm_generate_image,
 )
 from .src.llm_utils import format_readable_error
 from .src.models import Req
@@ -88,7 +86,7 @@ from .src.artist_preset import (
     parse_artist_presets,
     resolve_artist_preset,
 )
-from .src.image_io import resolve_image, astrip_image_metadata
+from .src.image_io import astrip_image_metadata
 from .src.user_manager import UserManager
 from .src.preset_manager import PresetManager
 from .src.queue_manager import get_shared_queue
@@ -320,60 +318,35 @@ WAITING_REPLIES = [
 
 
 @model_with_model_config(ConfigDict(extra="forbid"))
-class STNaiGenerateImageArgsNoImage(BaseModel):
-    instructions: Annotated[
+class NaiGenerateImageArgs(BaseModel):
+    request: Annotated[
         str,
         Field(
             description=(
-                "Natural-language instructions for the image-generation agent"
-                " that precisely describe the desired image"
-                ", as detailed as possible."
+                "The prompt tags for image generation."
+                " Use Danbooru/NovelAI tag format, comma-separated, in English."
+                " Include quality tags like 'masterpiece, best quality'."
+                " Write detailed tags for best results."
             )
         ),
     ]
-
-
-@model_with_model_config(ConfigDict(extra="forbid"))
-class STNaiGenerateImageArgs(BaseModel):
-    instructions: Annotated[
+    negative: Annotated[
         str,
         Field(
             description=(
-                "Natural-language instructions for the image-generation agent"
-                " that precisely describe the desired image"
-                ", as detailed as possible."
-                " Don't use the original index number in image list here"
-                ', instead, use sentences like "image referenced for image-to-image" or'
-                '"the first image referenced in vibe transfer".'
+                "Optional. Negative prompt tags for what NOT to include in the image."
             )
         ),
-    ]
-    i2i_image: Annotated[
-        int | None,
-        Field(
-            description=(
-                "Optional. The index of image you want to use"
-                " as the base for image-to-image generation."
-            )
-        ),
-    ] = None
-    vibe_transfer_images: Annotated[
-        list[int] | None,
-        Field(
-            description=(
-                "Optional. The indices of images you want to"
-                " use as the base for vibe/style transfer (in apply order)."
-            )
-        ),
-    ] = None
+    ] = ""
 
 
 @dataclass
-class STNaiGenerateImageTool(ConfigNeededTool):
-    name: str = "stnai_generate_image"
+class NaiGenerateImageTool(ConfigNeededTool):
+    name: str = "nai_generate_image"
     description: str = (
-        "Generate an anime-style image and send it to user."
-        " Use when user wants you to draw an image."
+        "Generate an anime-style illustration using NovelAI and send it to the user."
+        " Call this whenever the user wants to draw, create, or generate an image/picture/illustration."
+        " You can also call this proactively when you think an image would enhance your response."
     )
     parameters: dict = Field(default_factory=dict)
     _artist_state_store: Any = None
@@ -381,26 +354,8 @@ class STNaiGenerateImageTool(ConfigNeededTool):
 
     def __post_init__(self):
         super().__post_init__()
-
-        # Limit concurrent image fetching across tool calls.
-        # This is intentionally instance-level (tool object is registered once).
         self._image_fetch_sem = Semaphore(4)
-
-        allow_image = self.config.llm.allow_i2i or self.config.llm.allow_vibe_transfer
-        if not allow_image:
-            self.parameters = STNaiGenerateImageArgsNoImage.model_json_schema()
-        else:
-            self.description += (
-                " Images (in the latest user message ONLY) are gathered into an ordered list"
-                "; refer to them by zero-based index in tool parameters."
-            )
-            parameters = STNaiGenerateImageArgs.model_json_schema()
-            props = parameters["properties"]
-            if not self.config.llm.allow_i2i:
-                del props["i2i_image"]
-            if not self.config.llm.allow_vibe_transfer:
-                del props["vibe_transfer_images"]
-            self.parameters = parameters
+        self.parameters = NaiGenerateImageArgs.model_json_schema()
 
     async def call(
         self,
@@ -408,76 +363,28 @@ class STNaiGenerateImageTool(ConfigNeededTool):
         **kwargs,
     ) -> ToolExecResult:
         try:
-            args = STNaiGenerateImageArgs.model_validate(kwargs)
+            args = NaiGenerateImageArgs.model_validate(kwargs)
         except Exception as e:
-            tip = "Invalid arguments for STNaiGenerateImageTool"
+            tip = "Invalid arguments for nai_generate_image"
             logger.debug(tip, exc_info=e)
             return format_readable_error(e)
 
         ctx, event = _unwrap_tool_context(context)
 
-        images = [x for x in event.message_obj.message if isinstance(x, Image)]
-        sem = self._image_fetch_sem
-
-        async def _get_image(index: int) -> str:
-            try:
-                img = images[index]
-            except Exception as e:
-                tip = f"Image index {index} is out of range (only {len(images)} images available)"
-                logger.debug(tip)
-                raise ReturnToLLMError(tip) from e
-            try:
-                async with sem:
-                    return await resolve_image(img)
-            except Exception as e:
-                tip = f"Failed to fetch image at index {index}"
-                logger.debug(tip, exc_info=e)
-                raise ReturnToLLMError(f"{tip}:\n{format_readable_error(e)}") from e
-
-        async def _resolve_i2i_image():
-            return (
-                (await _get_image(args.i2i_image))
-                if args.i2i_image is not None
-                else None
-            )
-
-        async def _resolve_vibe_transfer_images():
-            if args.vibe_transfer_images is None:
-                return None
-            res: list[str] = []
-            for idx in args.vibe_transfer_images:
-                img_str = await _get_image(idx)
-                res.append(img_str)
-            return res
+        from .src.models import Req
+        from .src.params import complete_defaults, post_check_limits
 
         try:
-            i2i_image, vibe_transfer_images = await asyncio.gather(
-                _resolve_i2i_image(),
-                _resolve_vibe_transfer_images(),
-            )
-        except ReturnToLLMError as e:
-            logger.debug(f"{e}")
-            return f"{e}"
+            data: dict[str, Any] = {
+                "tag": args.request.strip(),
+            }
+            if args.negative.strip():
+                data["negative"] = args.negative.strip()
 
-        # 视觉输入仅使用“未被 i2i/vibe 占用”的图片
-        used_indices: set[int] = set()
-        if args.i2i_image is not None:
-            used_indices.add(args.i2i_image)
-        if args.vibe_transfer_images:
-            used_indices.update(args.vibe_transfer_images)
-        vision_images = [img for idx, img in enumerate(images) if idx not in used_indices]
-
-        try:
-            instructions_with_prefix = f"画一张图\n\n{args.instructions}"
-            req = await llm_generate_advanced_req(
-                instructions=instructions_with_prefix,
-                config=self.config,
-                ctx=ctx,
-                event=event,
-                i2i_image=i2i_image,
-                vibe_transfer_images=vibe_transfer_images,
-                vision_images=vision_images,
-            )
+            config = self.config
+            complete_defaults(data, config)
+            req = Req.model_validate(data)
+            post_check_limits(req, config, is_whitelisted=True)
 
             if self._artist_state_store is not None and self._artist_presets is not None:
                 session = SessionContext.from_event(event)
@@ -493,7 +400,7 @@ class STNaiGenerateImageTool(ConfigNeededTool):
 
             image = await wrapped_generate(
                 req,
-                self.config,
+                config,
                 client_getter=self.client_getter,
             )
 
@@ -573,7 +480,7 @@ class Plugin(Star):
         self._queue = get_shared_queue()
 
         self.context.add_llm_tools(
-            STNaiGenerateImageTool(
+            NaiGenerateImageTool(
                 config_init=self.config,
                 client_getter_init=self.get_http_client,
                 _artist_state_store=self._artist_state_store,
