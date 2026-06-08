@@ -497,8 +497,7 @@ class STNaiGenerateImageTool(ConfigNeededTool):
                 client_getter=self.client_getter,
             )
 
-            if self.config.general.strip_metadata:
-                image = await astrip_image_metadata(image)
+            image = await astrip_image_metadata(image)
         except ReturnToLLMError as e:
             logger.debug(f"{e}")
             return f"{e}"
@@ -873,9 +872,7 @@ class Plugin(Star):
             req.negative = inject_artist_negative(req.negative, artist_negative)
 
     async def _strip_images(self, images: list[bytes]) -> list[bytes]:
-        """根据配置开关，对图片列表批量抹除 metadata。"""
-        if not self.config.general.strip_metadata:
-            return images
+        """对图片列表批量抹除 metadata。"""
         return await asyncio.gather(*[astrip_image_metadata(img) for img in images])
 
     async def _parse_args(
@@ -908,60 +905,61 @@ class Plugin(Star):
             line = line.strip()
             if not line:
                 continue
-            
+
             if '=' in line:
                 key, value = line.split('=', 1)
-                key = key.strip()
-                value = value.strip()
-                
-                if key == "cs":
-                    cs_num = 1
-                else:
-                    cs_match = cs_pattern.match(key)
-                    cs_num = int(cs_match.group(1)) if cs_match else 0
-
-                if cs_num:
-                    existing = cs_entries.get(cs_num)
-                    if existing and existing != value:
-                        raise ValueError(f"cs{cs_num} 重复且不一致")
-                    cs_entries[cs_num] = value
-                    continue
-
-                # 检查是否是预设参数
-                if key == "s":
-                    preset_num = 1
-                else:
-                    match = preset_pattern.match(key)
-                    preset_num = int(match.group(1)) if match else 0
-
-                if preset_num:
-                    preset = await asyncio.to_thread(self.preset_manager.get_preset, value)
-                    if preset is None:
-                        raise ValueError(f"预设 {value} 不存在，使用 nai预设列表 查看可用预设")
-                    
-                    # 解析预设内容
-                    preset_lines = preset.content.split('\n')
-                    preset_params: list[tuple[str, str]] = []
-                    for pl in preset_lines:
-                        pl = pl.strip()
-                        if not pl:
-                            continue
-                        if '=' in pl:
-                            pk, pv = pl.split('=', 1)
-                            if pk.strip() == "cs":
-                                continue
-                            preset_params.append((pk.strip(), pv.strip()))
-                        else:
-                            # 没有 = 号的行视为 tag
-                            preset_params.append(('tag', pl))
-                    
-                    preset_numbers.append(preset_num)
-                    preset_params_list.append(preset_params)
-                else:
-                    direct_params.append((key, value))
+            elif ' ' in line:
+                key, value = line.split(' ', 1)
             else:
-                # 强制键值对格式，不接受无等号的行
-                raise ValueError(f"参数格式错误：'{line}'，请使用键值对格式，例如：tag=xxx")
+                raise ValueError(f"参数格式错误：'{line}'，请使用如 tag=xxx 或 tag xxx 的格式")
+            key = key.strip()
+            value = value.strip()
+
+            if key == "cs":
+                cs_num = 1
+            else:
+                cs_match = cs_pattern.match(key)
+                cs_num = int(cs_match.group(1)) if cs_match else 0
+
+            if cs_num:
+                existing = cs_entries.get(cs_num)
+                if existing and existing != value:
+                    raise ValueError(f"cs{cs_num} 重复且不一致")
+                cs_entries[cs_num] = value
+                continue
+
+            # 检查是否是预设参数
+            if key == "s":
+                preset_num = 1
+            else:
+                match = preset_pattern.match(key)
+                preset_num = int(match.group(1)) if match else 0
+
+            if preset_num:
+                preset = await asyncio.to_thread(self.preset_manager.get_preset, value)
+                if preset is None:
+                    raise ValueError(f"预设 {value} 不存在，使用 nai预设列表 查看可用预设")
+
+                # 解析预设内容
+                preset_lines = preset.content.split('\n')
+                preset_params: list[tuple[str, str]] = []
+                for pl in preset_lines:
+                    pl = pl.strip()
+                    if not pl:
+                        continue
+                    if '=' in pl:
+                        pk, pv = pl.split('=', 1)
+                        if pk.strip() == "cs":
+                            continue
+                        preset_params.append((pk.strip(), pv.strip()))
+                    else:
+                        # 没有 = 号的行视为 tag
+                        preset_params.append(('tag', pl))
+
+                preset_numbers.append(preset_num)
+                preset_params_list.append(preset_params)
+            else:
+                direct_params.append((key, value))
 
         # 默认预设兜底：用户未指定任何 sN= 时，自动应用配置中的默认预设
         if not preset_numbers:
@@ -1217,10 +1215,10 @@ class Plugin(Star):
 
     # ========== 画师预设命令 ==========
 
-    @event_filter.command("nai画师")
+    @event_filter.command("nai art")
     async def cmd_artist_preset(self, event: AstrMessageEvent):
         """画师预设：列出或切换画师风格"""
-        argument = event.message_str.removeprefix("nai画师").strip()
+        argument = event.message_str.removeprefix("nai art").strip()
         session = SessionContext.from_event(event)
         state = self._artist_state_store.get(session)
 
@@ -1230,7 +1228,7 @@ class Plugin(Star):
 
         if argument:
             if not argument.isdigit():
-                yield event.plain_result("请填写数字编号，例如：nai画师 2")
+                yield event.plain_result("请填写数字编号，例如：nai art 2")
                 return
             index = int(argument)
             if not 1 <= index <= len(self._artist_presets):
@@ -1280,46 +1278,49 @@ class Plugin(Star):
             
             if '=' in line:
                 key, value = line.split('=', 1)
-                key = key.strip()
-                value = value.strip()
-                
-                if key == "s":
-                    preset_num = 1
-                else:
-                    match = preset_pattern.match(key)
-                    preset_num = int(match.group(1)) if match else 0
-
-                if preset_num:
-                    presets.append((preset_num, value))
-                    continue
-
-                if key == "cs":
-                    cs_num = 1
-                else:
-                    cs_match = cs_pattern.match(key)
-                    cs_num = int(cs_match.group(1)) if cs_match else 0
-
-                if cs_num:
-                    existing = cs_entries.get(cs_num)
-                    if existing and existing != value:
-                        raise ValueError(f"cs{cs_num} 重复且不一致")
-                    cs_entries[cs_num] = value
-                elif key in {
-                    "i2i",
-                    "图生图",
-                    "vibe_transfer",
-                    "v_t",
-                    "氛围转移",
-                    "character_keep",
-                    "c_k",
-                    "ck",
-                    "角色保持",
-                }:
-                    image_params.append((key, value))
-                else:
-                    other_params[key] = value
+            elif ' ' in line:
+                key, value = line.split(' ', 1)
             else:
                 description_lines.append(line)
+                continue
+            key = key.strip()
+            value = value.strip()
+
+            if key == "s":
+                preset_num = 1
+            else:
+                match = preset_pattern.match(key)
+                preset_num = int(match.group(1)) if match else 0
+
+            if preset_num:
+                presets.append((preset_num, value))
+                continue
+
+            if key == "cs":
+                cs_num = 1
+            else:
+                cs_match = cs_pattern.match(key)
+                cs_num = int(cs_match.group(1)) if cs_match else 0
+
+            if cs_num:
+                existing = cs_entries.get(cs_num)
+                if existing and existing != value:
+                    raise ValueError(f"cs{cs_num} 重复且不一致")
+                cs_entries[cs_num] = value
+            elif key in {
+                "i2i",
+                "图生图",
+                "vibe_transfer",
+                "v_t",
+                "氛围转移",
+                "character_keep",
+                "c_k",
+                "ck",
+                "角色保持",
+            }:
+                image_params.append((key, value))
+            else:
+                other_params[key] = value
         
         # 裸文本直接作为 ds= 描述（不会覆盖显式的 ds=xxx）
         if description_lines and "ds" not in other_params:

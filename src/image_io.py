@@ -131,15 +131,15 @@ async def resolve_image_as_jpeg(image: Image) -> str:
 
 
 def strip_image_metadata(image_bytes: bytes) -> bytes:
-    """去除图片 EXIF/metadata，重新编码为纯净 PNG 返回。
+    """转 JPEG 以清除 metadata（prompt、参数等）。
 
     CPU-heavy, must be called via asyncio.to_thread.
     """
-    pil_image = PILImage.open(io.BytesIO(image_bytes))
-    clean = PILImage.new(pil_image.mode, pil_image.size)
-    clean.putdata(list(pil_image.getdata()))
+    img = PILImage.open(io.BytesIO(image_bytes))
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
     buf = io.BytesIO()
-    clean.save(buf, format="PNG")
+    img.save(buf, format="JPEG", quality=93)
     return buf.getvalue()
 
 

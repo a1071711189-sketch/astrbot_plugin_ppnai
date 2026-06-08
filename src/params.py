@@ -221,9 +221,11 @@ def parse_params(raw_params: str) -> Generator[tuple[str, str], None, None]:
         if "=" in line:
             key, value = line.split("=", 1)
             yield key.strip(), value.strip()
+        elif " " in line:
+            key, value = line.split(" ", 1)
+            yield key.strip(), value.strip()
         else:
-            # 强制键值对格式
-            raise ValueError(f"参数格式错误：'{line}'，请使用键值对格式，例如：tag=xxx")
+            raise ValueError(f"参数格式错误：'{line}'，请使用如 tag=xxx 或 tag xxx 的格式")
 
 
 

@@ -4,8 +4,7 @@
     "type": "object",
     "default": {
       "help_t2i": true,
-      "merge_draw_to_chat_record": true,
-      "strip_metadata": true
+      "merge_draw_to_chat_record": true
     },
     "description": "通用设置",
     "items": {
@@ -20,13 +19,6 @@
         "description": "将画图结果合并为聊天记录（仅 QQ 平台生效）",
         "hint": "Discord 等平台始终直接发送图片，无视此开关。",
         "title": "Merge Draw To Chat Record",
-        "type": "bool"
-      },
-      "strip_metadata": {
-        "default": true,
-        "description": "发送前抹除图片 Metadata",
-        "hint": "开启后会在发送图片前去除 EXIF 等元数据，保护隐私。关闭后保留原始图片数据。",
-        "title": "Strip Metadata",
         "type": "bool"
       }
     }
@@ -536,13 +528,13 @@
       "presets": {
         "type": "template_list",
         "description": "全局画师预设列表",
-        "hint": "各版本专属预设为空时将自动回退到此全局预设，通过 nai画师 命令切换",
+        "hint": "各版本专属预设为空时将自动回退到此全局预设，通过 /nai art 命令切换",
         "default": [],
         "title": "Presets",
         "templates": {
           "artist_preset": {
             "name": "画师预设",
-            "hint": "定义一个画师风格预设，可通过 nai画师 命令切换",
+            "hint": "定义一个画师风格预设，可通过 /nai art 命令切换",
             "items": {
               "name": {
                 "description": "预设名称",

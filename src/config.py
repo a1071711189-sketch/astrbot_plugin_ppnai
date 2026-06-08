@@ -80,15 +80,6 @@ class GeneralConfig(BaseModel):
             },
         ),
     ] = True
-    strip_metadata: Annotated[
-        bool,
-        Field(
-            description="发送前抹除图片 Metadata",
-            json_schema_extra={
-                "hint": "开启后会在发送图片前去除 EXIF 等元数据，保护隐私。关闭后保留原始图片数据。",
-            },
-        ),
-    ] = True
 
 
 class RequestConfig(BaseModel):
@@ -511,7 +502,7 @@ class ArtistPresetConfig(BaseModel):
         Field(
             description="画师预设列表",
             json_schema_extra={
-                "hint": "各版本专属预设为空时将自动回退到此全局预设，通过 nai画师 命令切换",
+                "hint": "各版本专属预设为空时将自动回退到此全局预设，通过 /nai art 命令切换",
             },
         ),
     ] = Field(default_factory=list)

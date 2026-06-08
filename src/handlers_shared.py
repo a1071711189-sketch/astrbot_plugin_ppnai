@@ -39,6 +39,9 @@ def _extract_params_from_text(text: str, treat_non_kv_as_tag: bool) -> list[tupl
         if "=" in line:
             k, v = line.split("=", 1)
             res.append((k.strip(), v.strip()))
+        elif " " in line:
+            k, v = line.split(" ", 1)
+            res.append((k.strip(), v.strip()))
         elif treat_non_kv_as_tag:
             res.append(("tag", line))
     return res
@@ -59,9 +62,14 @@ def _extract_direct_pairs(direct_text: str) -> list[tuple[str, str]]:
 
     for raw_line in direct_text.splitlines():
         line = raw_line.strip()
-        if not line or "=" not in line:
+        if not line:
             continue
-        k, v = line.split("=", 1)
+        if "=" in line:
+            k, v = line.split("=", 1)
+        elif " " in line:
+            k, v = line.split(" ", 1)
+        else:
+            continue
         k = k.strip()
         v = v.strip()
         if k == "ds":
