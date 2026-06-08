@@ -17,8 +17,8 @@
       },
       "merge_draw_to_chat_record": {
         "default": true,
-        "description": "将画图结果合并为聊天记录",
-        "hint": "关闭后将直接发送图片，不合并存在被举报风险，请自行评估",
+        "description": "将画图结果合并为聊天记录（仅 QQ 平台生效）",
+        "hint": "Discord 等平台始终直接发送图片，无视此开关。",
         "title": "Merge Draw To Chat Record",
         "type": "bool"
       },
@@ -534,39 +534,41 @@
     "description": "画师预设",
     "items": {
       "presets": {
+        "type": "template_list",
+        "description": "全局画师预设列表",
+        "hint": "各版本专属预设为空时将自动回退到此全局预设，通过 nai画师 命令切换",
         "default": [],
-        "description": "画师预设列表",
-        "hint": "通过命令切换的全局画师预设，可配置多个风格的画师串",
         "title": "Presets",
-        "type": "list",
-        "items": {
-          "name": {
-            "default": "",
-            "description": "预设名称",
-            "hint": "用于在列表中展示的风格名称",
-            "title": "Name",
-            "type": "string"
-          },
-          "description": {
-            "default": "",
-            "description": "风格说明",
-            "hint": "简短描述该预设的画风特点",
-            "title": "Description",
-            "type": "string"
-          },
-          "prompt": {
-            "default": "",
-            "description": "画师 Prompt",
-            "hint": "画师提示词，如 artist:xxx，支持权重语法",
-            "title": "Prompt",
-            "type": "text"
-          },
-          "negative_prompt": {
-            "default": "",
-            "description": "附加负面提示词",
-            "hint": "选中该预设时追加到负面提示词中的内容",
-            "title": "Negative Prompt",
-            "type": "text"
+        "templates": {
+          "artist_preset": {
+            "name": "画师预设",
+            "hint": "定义一个画师风格预设，可通过 nai画师 命令切换",
+            "items": {
+              "name": {
+                "description": "预设名称",
+                "type": "string",
+                "hint": "用于在列表中展示的风格名称",
+                "default": ""
+              },
+              "description": {
+                "description": "风格说明",
+                "type": "string",
+                "hint": "简短描述该预设的画风特点，会在预设列表中显示",
+                "default": ""
+              },
+              "prompt": {
+                "description": "画师 Prompt",
+                "type": "text",
+                "hint": "画师提示词，如 artist:xxx，支持权重语法 1.2::artist:name::",
+                "default": ""
+              },
+              "negative_prompt": {
+                "description": "附加负面提示词",
+                "type": "text",
+                "hint": "选中该预设时追加到负面提示词中的内容",
+                "default": ""
+              }
+            }
           }
         }
       }

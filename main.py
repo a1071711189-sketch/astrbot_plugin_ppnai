@@ -19,7 +19,7 @@ from astrbot.api import logger
 from astrbot.api import AstrBotConfig
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter as event_filter
 from astrbot.api.provider import LLMResponse
-from astrbot.api.message_components import Image, Node, Nodes, Reply
+from astrbot.api.message_components import Image, Reply
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.astr_agent_context import AstrAgentContext
@@ -313,9 +313,9 @@ def _unwrap_tool_context(context: ContextWrapper[AstrAgentContext]) -> tuple[Con
     return ctx, event
 
 WAITING_REPLIES = [
-    "少女绘画中……",
-    "在画了在画了",
-    "你就在此地不要走动，等我给你画一幅",
+    "了解了解～把你的想象交给我吧，我会把它变成现实的！",
+    "嘿嘿～这个委托听起来很有趣！数据加载中……生成启动！",
+    "指令确认！爱丽数码绘画模式全开，马上为你调配最棒的色彩！",
 ]
 
 
@@ -509,26 +509,16 @@ class STNaiGenerateImageTool(ConfigNeededTool):
             )
 
         try:
-            if self.config.general.merge_draw_to_chat_record:
-                sender_id = event.get_sender_id()
-                sender_name = event.get_sender_name()
-                nodes = Nodes([
-                    Node(
-                        uin=sender_id,
-                        name=sender_name,
-                        content=[Image.fromBytes(image)],
-                    )
-                ])
-                chain = MessageChain([nodes])
-            else:
-                chain = MessageChain([Image.fromBytes(image)])
+            chain = MessageChain([Image.fromBytes(image)])
             await ctx.send_message(event.unified_msg_origin, chain)
         except Exception as e:
             logger.exception("Send image failed")
+            import random as _random
+            from .src.handlers_shared import SEND_FAILURE_REPLIES as _sfr
             return (
-                f"Failed to send image, "
-                f"please report this error to user rather than retry"
-                f": \n{format_readable_error(e)}"
+                f"Image was generated successfully but failed to send due to network issue."
+                f" Inform the user:\n{_random.choice(_sfr)}"
+                f"\n\n(Technical detail: {format_readable_error(e)})"
             )
 
         return "Image successfully sent"
@@ -1267,11 +1257,11 @@ class Plugin(Star):
     def _parse_presets_from_params(
         self,
         raw_params: str,
-    ) -> tuple[list[str], dict[str, str], list[str]]:
+    ) -> tuple[list[str], dict[str, str], list[str], list[tuple[str, str]]]:
         """从参数中解析预设列表和其他参数
         
         Returns:
-            (预设名列表按优先级排序, 其他参数字典)
+            (预设名列表按优先级排序, 其他参数字典, cs名称列表, 图片参数)
         """
         import re
         preset_pattern = re.compile(r'^s(\d+)$')
@@ -1281,6 +1271,7 @@ class Plugin(Star):
         cs_entries: dict[int, str] = {}
         image_params: list[tuple[str, str]] = []
         other_params: dict[str, str] = {}
+        description_lines: list[str] = []
         
         for line in raw_params.split('\n'):
             line = line.strip()
@@ -1327,6 +1318,12 @@ class Plugin(Star):
                     image_params.append((key, value))
                 else:
                     other_params[key] = value
+            else:
+                description_lines.append(line)
+        
+        # 裸文本直接作为 ds= 描述（不会覆盖显式的 ds=xxx）
+        if description_lines and "ds" not in other_params:
+            other_params["ds"] = "\n".join(description_lines)
         
         # 按编号排序
         presets.sort(key=lambda x: x[0])

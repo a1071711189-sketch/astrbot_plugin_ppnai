@@ -74,9 +74,9 @@ class GeneralConfig(BaseModel):
     merge_draw_to_chat_record: Annotated[
         bool,
         Field(
-            description="将画图结果合并为聊天记录",
+            description="将画图结果合并为聊天记录（仅 QQ 平台生效）",
             json_schema_extra={
-                "hint": "关闭后将直接发送图片，不合并存在被举报风险，请自行评估",
+                "hint": "Discord 等平台始终直接发送图片，无视此开关。",
             },
         ),
     ] = True
@@ -511,7 +511,7 @@ class ArtistPresetConfig(BaseModel):
         Field(
             description="画师预设列表",
             json_schema_extra={
-                "hint": "通过命令切换的全局画师预设，可配置多个风格的画师串",
+                "hint": "各版本专属预设为空时将自动回退到此全局预设，通过 nai画师 命令切换",
             },
         ),
     ] = Field(default_factory=list)

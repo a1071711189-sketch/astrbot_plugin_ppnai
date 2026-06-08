@@ -1,10 +1,11 @@
 """Auto-draw command handlers and hook logic."""
 
 import asyncio
+import random
 from collections.abc import AsyncIterator
 
 from astrbot.api import logger
-from astrbot.api.message_components import Image, Node, Nodes
+from astrbot.api.message_components import Image
 from astrbot.api.provider import LLMResponse
 
 from .data_source import wrapped_generate
@@ -15,6 +16,7 @@ from .models import ReqAdditionCharacterKeep
 from .params import _is_image_component, parse_req_with_remaining_images
 from .image_params import iter_key_values, resolve_image_params
 from .handlers_shared import (
+    SEND_FAILURE_REPLIES,
     apply_explicit_overrides,
     extract_batch_count,
     merge_nai_params,
@@ -429,20 +431,11 @@ async def _auto_draw_generate(
 
                 images = await plugin._strip_images(images)
 
-                sender_id = event.get_sender_id()
-                sender_name = event.get_sender_name()
-                if plugin.config.general.merge_draw_to_chat_record:
-                    nodes = Nodes([
-                        Node(
-                            uin=sender_id,
-                            name=sender_name,
-                            content=[Image.fromBytes(img)],
-                        )
-                        for img in images
-                    ])
-                    await event.send(event.chain_result([nodes]))
-                else:
+                try:
                     await event.send(event.chain_result([Image.fromBytes(img) for img in images]))
+                except Exception:
+                    logger.exception("Send images failed")
+                    await event.send(event.plain_result(random.choice(SEND_FAILURE_REPLIES)))
 
             except asyncio.CancelledError:
                 await plugin._queue.mark_wait_finished(

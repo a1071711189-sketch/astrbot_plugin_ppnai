@@ -5,7 +5,7 @@ import random
 from collections.abc import AsyncIterator
 
 from astrbot.api import logger
-from astrbot.api.message_components import Image, Node, Nodes
+from astrbot.api.message_components import Image
 
 from .data_source import GenerateError, wrapped_generate
 from .image_params import iter_key_values, resolve_image_params
@@ -13,6 +13,7 @@ from .llm import ReturnToLLMError, llm_generate_advanced_req
 from .llm_utils import format_readable_error
 from .params import parse_req
 from .handlers_shared import (
+    SEND_FAILURE_REPLIES,
     apply_explicit_overrides,
     extract_batch_count,
     merge_nai_params,
@@ -242,22 +243,11 @@ async def handle_nai_draw(plugin, event, waiting_replies: list[str]) -> AsyncIte
 
                 images = await plugin._strip_images(images)
 
-                sender_id = event.get_sender_id()
-                sender_name = event.get_sender_name()
-                if plugin.config.general.merge_draw_to_chat_record:
-                    nodes = Nodes(
-                        [
-                            Node(
-                                uin=sender_id,
-                                name=sender_name,
-                                content=[Image.fromBytes(img)],
-                            )
-                            for img in images
-                        ]
-                    )
-                    yield event.chain_result([nodes])
-                else:
+                try:
                     yield event.chain_result([Image.fromBytes(img) for img in images])
+                except Exception:
+                    logger.exception("Send images failed")
+                    yield event.plain_result(random.choice(SEND_FAILURE_REPLIES))
             except ReturnToLLMError as e:
                 yield event.plain_result(f"画图失败：{e}")
             except asyncio.CancelledError:
@@ -377,20 +367,11 @@ async def handle_cmd_nai(plugin, event, waiting_replies: list[str]) -> AsyncIter
 
                 images = await plugin._strip_images(images)
 
-                sender_id = event.get_sender_id()
-                sender_name = event.get_sender_name()
-                if plugin.config.general.merge_draw_to_chat_record:
-                    nodes = Nodes([
-                        Node(
-                            uin=sender_id,
-                            name=sender_name,
-                            content=[Image.fromBytes(img)],
-                        )
-                        for img in images
-                    ])
-                    yield event.chain_result([nodes])
-                else:
+                try:
                     yield event.chain_result([Image.fromBytes(img) for img in images])
+                except Exception:
+                    logger.exception("Send images failed")
+                    yield event.plain_result(random.choice(SEND_FAILURE_REPLIES))
             except GenerateError as e:
                 logger.error(f"Generation failed: {e}")
                 readable = format_readable_error(e)

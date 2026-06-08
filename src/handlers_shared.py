@@ -9,6 +9,12 @@ from __future__ import annotations
 from .models import Req
 from .params import req_model_assembler
 
+SEND_FAILURE_REPLIES = [
+    "图片已经生成好了！质量很棒！但是网络波动导致发送失败……要我现在再试一次吗？",
+    "生成成功了！结果超级理想！可惜网络突然抽风发不出去……好气哦！要重试吗？",
+    "啊——！好不容易生成了漂亮的图，却被网络波动拦住了……要再来一次吗？",
+]
+
 
 def _falsy(value: str) -> bool:
     return value.strip().lower() in {"false", "0", "no", "off", "关", "否"}
