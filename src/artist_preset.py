@@ -40,7 +40,6 @@ class RecentImageRecord:
 class SessionRuntimeState:
     """会话级别的运行时状态"""
     selected_artist_index: int | None = None
-    selected_size: str | None = None
     recent_images: deque[RecentImageRecord] = field(
         default_factory=lambda: deque(maxlen=20),
     )
