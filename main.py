@@ -15,7 +15,7 @@ from astrbot.api import AstrBotConfig
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.provider import LLMResponse
 from astrbot.api.message_components import Image, Reply
-from astrbot.api.star import Context, Star, StarTools
+from astrbot.api.star import Context, Star, StarTools, register
 
 
 def _load_src_module(module_basename: str):
@@ -304,6 +304,13 @@ WAITING_REPLIES = [
 ]
 
 
+@register(
+    "astrbot_plugin_ppnai",
+    "LgCookie&etgpao&feiu",
+    "泡泡画图：基于 NovelAI 官方 API 的绘图插件，具有强大的文生图/图生图、氛围转移、角色保持、AI 辅助生图、自动画图、队列与额度管理能力。",
+    "v1.6.1",
+    "https://github.com/a1071711189-sketch/astrbot_plugin_ppnai",
+)
 class Plugin(Star):
     """使用指令 nai 查看详细帮助"""
 
@@ -626,22 +633,20 @@ class Plugin(Star):
         except Exception:
             return ""
 
-    def _get_artist_injection(self, event: AstrMessageEvent) -> tuple[str, str]:
-        """获取当前会话选中画师预设的 prompt 和 negative_prompt。"""
+    def _apply_session_overrides(self, req, event: AstrMessageEvent) -> None:
+        """将会话级画师预设和尺寸注入到请求参数中。"""
         session = SessionContext.from_event(event)
         state = self._artist_state_store.get(session)
+
         selected = resolve_artist_preset(self._artist_presets, state)
         if selected:
-            return selected.prompt, selected.negative_prompt
-        return "", ""
+            if selected.prompt:
+                req.tag = inject_artist_prompt(req.tag, selected.prompt)
+            if selected.negative_prompt:
+                req.negative = inject_artist_negative(req.negative, selected.negative_prompt)
 
-    def _apply_artist_preset(self, req, event: AstrMessageEvent) -> None:
-        """将会话级画师预设注入到请求参数中。"""
-        artist_prompt, artist_negative = self._get_artist_injection(event)
-        if artist_prompt:
-            req.tag = inject_artist_prompt(req.tag, artist_prompt)
-        if artist_negative:
-            req.negative = inject_artist_negative(req.negative, artist_negative)
+        if state.selected_size:
+            req.size = state.selected_size
 
     async def _strip_images(self, images: list[bytes]) -> list[bytes]:
         """对图片列表批量抹除 metadata。"""
@@ -1060,7 +1065,7 @@ class Plugin(Star):
             logger.exception("LLM tool: advanced req generation failed")
             return f"图片生成失败：{format_readable_error(e)}"
 
-        self._apply_artist_preset(req, event)
+        self._apply_session_overrides(req, event)
 
         if quota_enabled and not is_whitelisted:
             quota = self.user_manager.get_quota(user_id)
@@ -1124,6 +1129,39 @@ class Plugin(Star):
             desc_part = f" - {preset.description}" if preset.description else ""
             lines.append(f"{marker} {i}. {preset.name}{desc_part}")
         yield event.plain_result("\n".join(lines))
+
+    @filter.command("nai size")
+    async def cmd_size(self, event: AstrMessageEvent):
+        """查看或切换出图尺寸"""
+        argument = event.message_str.removeprefix("nai size").strip()
+        session = SessionContext.from_event(event)
+        state = self._artist_state_store.get(session)
+
+        if argument:
+            size = self._normalize_size(argument)
+            if not size:
+                yield event.plain_result("请使用 竖图/横图/方图 或 v/h/s")
+                return
+            state.selected_size = size
+            yield event.plain_result(f"已切换尺寸为 {size}")
+            return
+
+        current = state.selected_size or "跟随默认"
+        yield event.plain_result(
+            f"当前尺寸：{current}\n"
+            f"可用：竖图/v → 832x1216 | 横图/h → 1216x832 | 方图/s → 1024x1024"
+        )
+
+    @staticmethod
+    def _normalize_size(raw: str) -> str:
+        r = raw.strip().lower()
+        if r in {"竖图", "portrait", "v"}:
+            return "832x1216"
+        if r in {"横图", "landscape", "h"}:
+            return "1216x832"
+        if r in {"方图", "square", "s"}:
+            return "1024x1024"
+        return ""
 
     # ========== nai画图命令（直接调用插件AI） ==========
     
